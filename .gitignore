@@ -1,23 +1,22 @@
-### AL ###
-#Template for AL projects for Dynamics 365 Business Central
-#launch.json folder
-.vscode/
-#Cache folder
-.alcache/
-#Symbols folder
-.alpackages/
-#Snapshots folder
-.snapshots/
-#Testing Output folder
-.output/
-#Extension App-file
-*.app
-#Rapid Application Development File
-rad.json
-#Translation Base-file
-*.g.xlf
-#License-files
-*.bclicense
-*.flf
-#Test results file
-TestResults.xml
+# Build artifacts (Directory.Build.props already redirects obj/bin outside
+# this folder, onto C:, for exFAT reasons — these entries are just a safety
+# net in case that ever changes, or for anyone building without that props file).
+src/obj/
+src/bin/
+src/.vs/
+
+# Internal development material — design decisions, test protocols, the
+# Claude Code project hub — not part of the shipped mod, kept local only.
+notes/
+CLAUDE.md
+input-limitations.md
+
+# Pre-3-column-redesign UI, kept only as a local rollback safety net.
+dev/archive-ui-m3v1/
+
+# Texture working files: only the exported .png ships with the mod.
+GameData/KRILL/Textures/*.psd
+
+# OS/editor cruft
+.DS_Store
+Thumbs.db
