@@ -1,4 +1,4 @@
-# KRILL - Kerbal Rebindable Inputs & Limitless groups
+# KRILL - Kerbal Rebindable Inputs & Limit-Less groups
 
 A Kerbal Space Program mod that extends the stock action-group system past
 its 10-group limit transparently. Groups 11 and up work exactly like
@@ -6,11 +6,7 @@ groups 1-10 always have: same 5 override sets, same activation semantics,
 same career gate. If you already know how to use stock action groups, you
 already know how to use KRILL.
 
-![KRILL logo](Textures/KRILL_logo.png)
-
-## Screenshots
-
-![The KRILL window in the VAB, showing an extended group's assigned parts and actions](../../screenshots/20260724224433_1.jpg)
+![KRILL logo](dev/KRILL_logo.png)
 
 ## What it does
 
@@ -43,6 +39,10 @@ already know how to use KRILL.
   keymap itself is global, shared across every save and vessel.
 - **Localization**: English and Italian, full parity (every player-facing
   string in both).
+
+## Screenshots
+
+![The KRILL window in the VAB, showing an extended group's assigned parts and actions](dev/20260724224433_2.jpg)
 
 ## Requirements
 
