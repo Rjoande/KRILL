@@ -6,7 +6,7 @@ groups 1-10 always have: same 5 override sets, same activation semantics,
 same career gate. If you already know how to use stock action groups, you
 already know how to use KRILL.
 
-![KRILL logo](dev/KRILL_logo.png)
+![KRILL logo](dev/header_KRILL1.png)
 
 ## What it does
 
