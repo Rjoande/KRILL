@@ -88,21 +88,40 @@ namespace KRILL.UI
 		{
 			if (hoverPart != null)
 			{
-				// Un-hovering the part that's ALSO the persistent selection must
-				// restore its blue highlight, not clear it to default — confirmed the
-				// hard way while porting this: without the check, mousing over the
-				// already-selected part during a fresh pick and moving away again
-				// silently erased its selection highlight even though selectedPart
-				// itself never changed.
-				if (hoverPart == selectedPart)
-				{
-					ApplySelectedPartHighlight();
-				}
-				else
-				{
-					hoverPart.SetHighlightDefault();
-				}
+				RestoreHoverGroupHighlight(hoverPart);
 				hoverPart = null;
+			}
+		}
+
+		/// <summary>
+		/// Un-hovering a part that's ALSO the persistent selection (or one of ITS
+		/// symmetry siblings, 2026-07-27) must restore the group's blue highlight,
+		/// not clear it to default — confirmed the hard way while porting this:
+		/// without the check, mousing over the already-selected part during a fresh
+		/// pick and moving away again silently erased its selection highlight even
+		/// though selectedPart itself never changed.
+		/// </summary>
+		private void RestoreHoverGroupHighlight(Part hovered)
+		{
+			if (IsSelectedPartOrSibling(hovered))
+			{
+				ApplySelectedPartHighlight();
+				return;
+			}
+			foreach (Part p in KrillQuery.GetSymmetryGroup(hovered))
+			{
+				p.SetHighlightDefault();
+			}
+		}
+
+		/// <summary>Cyan preview for the WHOLE prospective symmetry group while picking, not just the part under the cursor — shows what "+ Part" is actually about to select (2026-07-27).</summary>
+		private static void ApplyHoverGroupHighlight(Part hovered)
+		{
+			foreach (Part p in KrillQuery.GetSymmetryGroup(hovered))
+			{
+				p.SetHighlightType(Part.HighlightType.AlwaysOn);
+				p.SetHighlightColor(Color.cyan);
+				p.SetHighlight(true, false);
 			}
 		}
 
@@ -197,21 +216,12 @@ namespace KRILL.UI
 			{
 				if (hoverPart != null)
 				{
-					if (hoverPart == selectedPart)
-					{
-						ApplySelectedPartHighlight();
-					}
-					else
-					{
-						hoverPart.SetHighlightDefault();
-					}
+					RestoreHoverGroupHighlight(hoverPart);
 				}
 				hoverPart = hovered;
 				if (hoverPart != null)
 				{
-					hoverPart.SetHighlightType(Part.HighlightType.AlwaysOn);
-					hoverPart.SetHighlightColor(Color.cyan);
-					hoverPart.SetHighlight(true, false);
+					ApplyHoverGroupHighlight(hoverPart);
 				}
 			}
 			if (Input.GetMouseButtonDown(0) && hoverPart != null
@@ -258,12 +268,27 @@ namespace KRILL.UI
 				12, KrillUi.Tan);
 			KrillUi.Size(header.gameObject, -1f, 20f);
 
+			// Actions already assigned to this part for this (set, group) are hidden
+			// from the list (2026-07-28 user request) — offering to add a duplicate
+			// serves no purpose; use the ✕ in column 3 to remove one first if you
+			// actually want to reassign it. selectedPart already carries its own full
+			// copy of the group's assignments (symmetry fan-out writes to every
+			// member), so checking against it alone is enough — no extra symmetry
+			// handling needed here, same as column 3 already relies on.
+			List<KrillQuery.AssignmentEntry> already = GetEntriesForPart(ActiveParts(), selectedGroup.Value, selectedPart);
+
 			RectTransform list = KrillUi.ScrollList(panel, 180f);
+			int total = 0;
 			int shown = 0;
 			foreach (PartModule pm in selectedPart.Modules)
 			{
 				foreach (BaseAction ba in pm.Actions)
 				{
+					total++;
+					if (IsAlreadyAssigned(ba, already))
+					{
+						continue;
+					}
 					shown++;
 					BaseAction captured = ba;
 					KrillUi.TextButton(list, ba.guiName, () => AssignAction(captured), KrillUi.Panel2, KrillUi.Text, 12, -1f, 22f);
@@ -271,10 +296,23 @@ namespace KRILL.UI
 			}
 			if (shown == 0)
 			{
-				KrillUi.Label(list, Loc("#LOC_KRILL_ui_noActions"), 12, KrillUi.Muted, TextAnchor.MiddleCenter);
+				string emptyKey = total == 0 ? "#LOC_KRILL_ui_noActions" : "#LOC_KRILL_ui_allActionsAssigned";
+				KrillUi.Label(list, Loc(emptyKey), 12, KrillUi.Muted, TextAnchor.MiddleCenter);
 			}
 
 			KrillUi.TextButton(panel, Loc("#LOC_KRILL_ui_cancel"), CancelPicker, KrillUi.Panel, KrillUi.Muted, 12, 90f, 24f);
+		}
+
+		private static bool IsAlreadyAssigned(BaseAction ba, List<KrillQuery.AssignmentEntry> already)
+		{
+			for (int i = 0; i < already.Count; i++)
+			{
+				if (already[i].resolved == ba)
+				{
+					return true;
+				}
+			}
+			return false;
 		}
 
 		private void AssignAction(BaseAction ba)
@@ -285,11 +323,35 @@ namespace KRILL.UI
 				CancelPicker();
 				return;
 			}
-			ModuleKrill m = selectedPart.FindModuleImplementing<ModuleKrill>();
-			if (m != null)
+			// Fans out to every CURRENT symmetry sibling of selectedPart (2026-07-27),
+			// not just the one instance actually clicked in the scene — matches the
+			// stock behavior this is meant to replicate ("assign once, applies to the
+			// whole symmetric set"). Each part gets its OWN KrillActionRef value copy:
+			// KrillActionRef has no part identity of its own (module+occurrence+action
+			// only, see its class doc), so a fresh copy per sibling is only about not
+			// sharing one mutable object across independent parts' data, not about
+			// resolving correctly — the same value resolves fine on every sibling
+			// since they're all the same part type with the same modules/actions.
+			bool assignedAny = false;
+			foreach (Part p in KrillQuery.GetSymmetryGroup(selectedPart))
 			{
-				m.Data.AddAssignment(activeSet, selectedGroup.Value, actionRef);
+				ModuleKrill m = p.FindModuleImplementing<ModuleKrill>();
+				if (m == null)
+				{
+					continue;
+				}
+				KrillActionRef refCopy = new KrillActionRef
+				{
+					module = actionRef.module,
+					occurrence = actionRef.occurrence,
+					action = actionRef.action
+				};
+				m.Data.AddAssignment(activeSet, selectedGroup.Value, refCopy);
 				m.MarkDirty();
+				assignedAny = true;
+			}
+			if (assignedAny)
+			{
 				ScreenMessages.PostScreenMessage(
 					Localizer.Format("#LOC_KRILL_ui_assignDone", ba.guiName, selectedGroup.Value.ToString()),
 					4f, ScreenMessageStyle.UPPER_CENTER);

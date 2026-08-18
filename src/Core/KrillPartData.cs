@@ -262,6 +262,20 @@ namespace KRILL
 		}
 
 		/// <summary>
+		/// Removes assignment(s) matching these VALUES rather than a specific object
+		/// reference — needed when a removal is fanned out to a symmetric sibling
+		/// (2026-07-27): each part in a symmetry group holds its OWN independent
+		/// KrillAssignment instance (same values, different object), so the
+		/// reference-based RemoveAssignment above can't be reused directly on a
+		/// sibling's list. Returns true if anything was removed.
+		/// </summary>
+		public bool RemoveAssignmentMatching(int set, int group, string module, int occurrence, string action)
+		{
+			return assignments.RemoveAll(a => a.set == set && a.group == group && a.actionRef != null
+				&& a.actionRef.module == module && a.actionRef.occurrence == occurrence && a.actionRef.action == action) > 0;
+		}
+
+		/// <summary>
 		/// Strips assignments/name/toggle for one (set, group) pair on THIS part only
 		/// — scoped to a SINGLE set (2026-07-18 decision: removing a part's node in
 		/// the 3-column UI only clears the set you're currently looking at, other

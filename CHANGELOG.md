@@ -1,12 +1,11 @@
 # Changelog
 
-## [0.1.0] — First public release
+## v0.1.1
 
-### What it is
+- **Symmetric part selection**: picking a part that has symmetry counterparts (e.g. one of 4 landing legs placed with 4x symmetry) now selects and assigns the whole group at once. Hover during "+ Part" previews the entire group in cyan, the persistent selection highlights all of them in blue, and the window shows a single card for the group instead of one row per physical part.
+- **Action picker hides already-assigned actions**: the "+ Action" list no longer offers an action that's already assigned to the selected part for the current group and set.
 
-KRILL (Kerbal Rebindable Inputs & Limitless groups) extends the stock action-group system past its 10-group limit, transparently. Extended groups work exactly like groups 1-10 already do: same 5 override sets, same activation semantics, same career gate.
-
-### Added
+## v0.1.0 [First public release]
 
 - **Unlimited virtual action groups** on top of the stock 10, sparse by design (a group only exists once it holds an assignment or a name), with a configurable visible-group cap (20-99, difficulty settings page).
 - **Full set symmetry**: every extended group can be assigned independently per override set, identical to how stock groups 1-10 already behave across the 5 sets (Default + 4).
@@ -19,14 +18,4 @@ KRILL (Kerbal Rebindable Inputs & Limitless groups) extends the stock action-gro
 - **Groups 1-10 stay assigned from the stock Action Groups screen**; KRILL only manages their display name and keybind, never duplicating stock's own assignment UI.
 - **Per-craft persistence** for every assignment (save/load, docking/undocking, symmetry parts), separate from the global, per-player keymap.
 - **Toolbar button** (stock toolbar and Blizzy's Toolbar, via ToolbarControl).
-- **Localization**: English and Italian, full parity.
-
-### Known limitations
-
-- Renaming an override set (1-4) works in flight only — no editor-side equivalent exists in stock to write that name to before a vessel is launched.
-- No in-flight HUD button grid yet.
-- No integration into the stock Action Groups app or the editor's Actions screen yet.
-
-### Requirements
-
-KSP 1.12.5, ModuleManager, ToolbarControl, and the stock "Action group sets" general setting (`ADDITIONAL_ACTION_GROUPS`) enabled.
+- **Localization**: English and Italian.

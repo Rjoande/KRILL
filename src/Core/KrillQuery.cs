@@ -84,23 +84,62 @@ namespace KRILL
 			return result;
 		}
 
-		/// <summary>Distinct parts with at least one assignment in (set, group), in first-seen order — the 3-column UI's middle column.</summary>
+		/// <summary>
+		/// Distinct parts with at least one assignment in (set, group), in first-seen
+		/// order, collapsed one row per symmetry group (2026-07-27: symmetric parts
+		/// carry identical, independently-persisted copies of the same assignment —
+		/// see GetSymmetryGroup — so they'd otherwise show up as separate rows for
+		/// what the player experiences as one part). The first member encountered
+		/// becomes the representative; its symmetryCounterparts are looked up FRESH
+		/// here, never cached, so a group broken apart later just stops collapsing
+		/// on the next rebuild — no stale-membership cleanup needed anywhere.
+		/// </summary>
 		public static List<Part> GetAssignedParts(IList<Part> parts, int set, int group)
 		{
-			List<Part> result = new List<Part>();
+			List<Part> assigned = new List<Part>();
 			foreach (ModuleKrill m in Modules(parts))
 			{
 				List<KrillAssignment> asg = m.Data.assignments;
 				for (int i = 0; i < asg.Count; i++)
 				{
-					if (asg[i].set == set && asg[i].group == group && !result.Contains(m.part))
+					if (asg[i].set == set && asg[i].group == group && !assigned.Contains(m.part))
 					{
-						result.Add(m.part);
+						assigned.Add(m.part);
 						break;
 					}
 				}
 			}
+
+			List<Part> result = new List<Part>();
+			HashSet<Part> covered = new HashSet<Part>();
+			for (int i = 0; i < assigned.Count; i++)
+			{
+				Part p = assigned[i];
+				if (covered.Contains(p))
+				{
+					continue;
+				}
+				result.Add(p);
+				foreach (Part sibling in GetSymmetryGroup(p))
+				{
+					covered.Add(sibling);
+				}
+			}
 			return result;
+		}
+
+		/// <summary>
+		/// A part plus its CURRENT symmetry counterparts (Part.symmetryCounterparts,
+		/// read live — never stored), as one logical unit for assignment/removal/
+		/// highlighting. A part with no symmetry siblings returns just itself, so
+		/// every caller can treat "one part" and "a symmetric set of parts" the same
+		/// way without a separate code path.
+		/// </summary>
+		public static List<Part> GetSymmetryGroup(Part part)
+		{
+			List<Part> group = new List<Part> { part };
+			group.AddRange(part.symmetryCounterparts);
+			return group;
 		}
 
 		/// <summary>

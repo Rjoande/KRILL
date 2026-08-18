@@ -352,7 +352,11 @@ namespace KRILL.UI
 			List<BaseAction> stockActions = (gIdx >= 0 && selIsStock)
 				? KrillQuery.GetStockActions(parts, activeSet, StockGroups[selectedGroup.Value - 1]) : new List<BaseAction>();
 
-			int pIdx = (selectedPart != null) ? assignedParts.IndexOf(selectedPart) : -1;
+			// Not a plain IndexOf: assignedParts holds one REPRESENTATIVE per symmetry
+			// group (KrillQuery.GetAssignedParts), but selectedPart may be whichever
+			// sibling was actually clicked in the scene picker, not necessarily that
+			// representative — IsSelectedPartOrSibling treats the whole group as one.
+			int pIdx = (selectedPart != null) ? assignedParts.FindIndex(IsSelectedPartOrSibling) : -1;
 			bool partTransient = selectedPart != null && !selIsStock && pIdx < 0 && gIdx >= 0;
 			if (selectedPart != null && !partTransient && pIdx < 0)
 			{
@@ -626,7 +630,7 @@ namespace KRILL.UI
 			for (int i = 0; i < assignedParts.Count; i++)
 			{
 				Part p = assignedParts[i];
-				bool sel = p == selectedPart;
+				bool sel = IsSelectedPartOrSibling(p);
 				BuildClickableCell(listContent, p.partInfo.title, sel, () => OnPartClicked(p),
 					sel ? BuildPartRemoveButton(p) : null);
 			}
@@ -656,10 +660,20 @@ namespace KRILL.UI
 		{
 			if (pendingRemovePart)
 			{
-				ModuleKrill m = p.FindModuleImplementing<ModuleKrill>();
-				if (m != null && selectedGroup.HasValue && m.Data.RemoveGroupInSet(activeSet, selectedGroup.Value))
+				if (selectedGroup.HasValue)
 				{
-					m.MarkDirty();
+					// Fans out to every CURRENT symmetry sibling of p, not just p itself
+					// (2026-07-27) — each holds its own independent copy of the same
+					// assignments, so removing from only one would leave the group
+					// visually merged (still symmetric) but functionally desynced.
+					foreach (Part sibling in KrillQuery.GetSymmetryGroup(p))
+					{
+						ModuleKrill m = sibling.FindModuleImplementing<ModuleKrill>();
+						if (m != null && m.Data.RemoveGroupInSet(activeSet, selectedGroup.Value))
+						{
+							m.MarkDirty();
+						}
+					}
 				}
 				pendingRemovePart = false;
 				DeselectPart();
@@ -695,9 +709,32 @@ namespace KRILL.UI
 
 		private void RemoveActionEntry(KrillQuery.AssignmentEntry entry)
 		{
-			if (entry.module != null && entry.module.Data.RemoveAssignment(entry.assignment))
+			if (entry.module != null && entry.assignment != null)
 			{
-				entry.module.MarkDirty();
+				if (entry.module.Data.RemoveAssignment(entry.assignment))
+				{
+					entry.module.MarkDirty();
+				}
+				// Same value on every OTHER symmetric sibling of entry.part — each has
+				// its own independent KrillAssignment object (same values), so it can't
+				// be removed by the reference-based call above; match by value instead
+				// (2026-07-27, same reasoning as OnRemovePartClicked).
+				KrillActionRef r = entry.assignment.actionRef;
+				if (r != null && entry.part != null)
+				{
+					foreach (Part sibling in KrillQuery.GetSymmetryGroup(entry.part))
+					{
+						if (sibling == entry.part)
+						{
+							continue;
+						}
+						ModuleKrill m = sibling.FindModuleImplementing<ModuleKrill>();
+						if (m != null && m.Data.RemoveAssignmentMatching(entry.assignment.set, entry.assignment.group, r.module, r.occurrence, r.action))
+						{
+							m.MarkDirty();
+						}
+					}
+				}
 			}
 			RebuildContent();
 		}
@@ -775,21 +812,35 @@ namespace KRILL.UI
 			pendingRemovePart = false;
 		}
 
+		/// <summary>Is p the selected part, or one of ITS current symmetry siblings (2026-07-27)? Used everywhere a plain "== selectedPart" would miss the rest of a symmetric group — selectedPart is whichever specific instance was clicked, not necessarily the group's representative row.</summary>
+		private bool IsSelectedPartOrSibling(Part p)
+		{
+			return selectedPart != null && (p == selectedPart || KrillQuery.GetSymmetryGroup(p).Contains(selectedPart));
+		}
+
 		private void ApplySelectedPartHighlight()
 		{
-			if (selectedPart != null)
+			if (selectedPart == null)
 			{
-				selectedPart.SetHighlightType(Part.HighlightType.AlwaysOn);
-				selectedPart.SetHighlightColor(SelectedPartColor);
-				selectedPart.SetHighlight(true, false);
+				return;
+			}
+			foreach (Part p in KrillQuery.GetSymmetryGroup(selectedPart))
+			{
+				p.SetHighlightType(Part.HighlightType.AlwaysOn);
+				p.SetHighlightColor(SelectedPartColor);
+				p.SetHighlight(true, false);
 			}
 		}
 
 		private void ClearPartHighlight()
 		{
-			if (selectedPart != null)
+			if (selectedPart == null)
 			{
-				selectedPart.SetHighlightDefault();
+				return;
+			}
+			foreach (Part p in KrillQuery.GetSymmetryGroup(selectedPart))
+			{
+				p.SetHighlightDefault();
 			}
 		}
 
