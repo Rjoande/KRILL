@@ -6,7 +6,7 @@
     <LangVersion>8.0</LangVersion>
     <AssemblyName>KRILL</AssemblyName>
     <RootNamespace>KRILL</RootNamespace>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <DebugType>none</DebugType>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>

@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.2
+
+- **IVA monitor support** via MFD Extended (bay D): if both mods are installed, KRILL gets a screen on any compatible multi-function display prop, reachable without leaving the cockpit. Purely additive: nothing changes if MFD Extended isn't installed.
+
 ## v0.1.1
 
 - **Symmetric part selection**: picking a part that has symmetry counterparts (e.g. one of 4 landing legs placed with 4x symmetry) now selects and assigns the whole group at once. Hover during "+ Part" previews the entire group in cyan, the persistent selection highlights all of them in blue, and the window shows a single card for the group instead of one row per physical part.
