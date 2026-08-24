@@ -122,10 +122,16 @@ namespace KRILL.UI
 			// window itself closes mid-capture (e.g. the editor scene starts
 			// unloading) — nothing else would be left alive to release it.
 			KrillCapture.ForceCancel();
+			// Safety net for the Hold-kind Trigger button: if the window closes
+			// (scene change, player closes it) while physically holding it down,
+			// don't leave the persisted bool stuck "on" for a group nothing will
+			// ever release again from here.
+			KrillActivation.ReleaseAllUiHeld(FlightGlobals.ActiveVessel);
 			InputLockManager.RemoveControlLock(InputLockId);
 			GameEvents.onGameSceneLoadRequested.Remove(OnSceneChange);
 			GameEvents.OnVesselOverrideGroupChanged.Remove(OnVesselSetChanged);
 			GameEvents.onVesselChange.Remove(OnActiveVesselChanged);
+			KrillActivation.GroupActivated -= OnGroupActivated;
 			if (current == this)
 			{
 				current = null;
@@ -147,6 +153,32 @@ namespace KRILL.UI
 			}
 			activeSet = v.GroupOverride;
 			DeselectPart();
+			RebuildContent();
+		}
+
+		/// <summary>
+		/// Keeps the footer's State label live for a real activation regardless of
+		/// source (keypress via KrillInputManager, or our own Trigger button) — see
+		/// KrillActivation.GroupActivated. Unconditional rebuild on a matching
+		/// vessel, same style as OnVesselSetChanged above; group-activations are
+		/// discrete key-press events, not a per-frame flood.
+		///
+		/// EXCEPT while the group is still UI-held (2026-08-19 bug found in
+		/// testing): RebuildContent tears down and recreates every footer
+		/// GameObject, including the Hold Trigger button whose PointerDown is what
+		/// caused this very activation — destroying it mid-press orphans Unity's
+		/// EventSystem press-tracking, so the eventual mouse-up is never delivered
+		/// to anything and the group is stuck "on". Skipping the rebuild while
+		/// IsUiHeld is true keeps that button alive until the real PointerUp fires
+		/// (KrillUi.HoldButton's onRelease), which un-registers the hold and lets
+		/// the resulting deactivation's own OnGroupActivated rebuild normally.
+		/// </summary>
+		private void OnGroupActivated(Vessel v, int group)
+		{
+			if (v != FlightGlobals.ActiveVessel || KrillActivation.IsUiHeld(group))
+			{
+				return;
+			}
 			RebuildContent();
 		}
 
@@ -234,6 +266,7 @@ namespace KRILL.UI
 			GameEvents.onGameSceneLoadRequested.Add(OnSceneChange);
 			GameEvents.OnVesselOverrideGroupChanged.Add(OnVesselSetChanged);
 			GameEvents.onVesselChange.Add(OnActiveVesselChanged);
+			KrillActivation.GroupActivated += OnGroupActivated;
 
 			if (HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null)
 			{
@@ -914,10 +947,51 @@ namespace KRILL.UI
 
 				KrillUi.TextButton(footer.transform, Loc("#LOC_KRILL_ui_capture"), () => StartCapture(g.number, g.isStock),
 					KrillUi.Panel2, KrillUi.TanDim, 11, 55f, 22f);
+
+				// Kind (Switch/Toggle/Hold) resolved once, extended groups only — feeds
+				// both the Trigger button just below (Hold needs press-and-hold, not a
+				// click) and the kind/state controls further down. Same scope boundary
+				// as everything else that manages assignments/keymaps — stock 1-10
+				// already have their own public, persisted state via
+				// vessel.ActionGroups, KRILL doesn't need to add anything there.
+				KrillQuery.GroupState? gs = !g.isStock ? KrillQuery.GetGroupState(RootPart(), activeSet, g.number) : null;
+				KrillActuationKind kind = gs?.kind ?? KrillActuationKind.Switch;
+
 				if (HighLogic.LoadedSceneIsFlight)
 				{
-					KrillUi.TextButton(footer.transform, Loc("#LOC_KRILL_ui_trigger"), () => Trigger(g.number, g.isStock),
-						KrillUi.Panel2, KrillUi.GreenHi, 11, 50f, 22f);
+					if (kind == KrillActuationKind.Hold)
+					{
+						// Press-and-hold, not a toggle (2026-08-19 design discussion):
+						// mirrors stock's own BRAKES precedent and keeps the promise of
+						// Hold consistent across every activation source (key, this
+						// button, the future HUD) — mouse-down forces the group ON,
+						// mouse-up forces it OFF, exactly like actually holding the key.
+						KrillUi.HoldButton(footer.transform, Loc("#LOC_KRILL_ui_trigger"),
+							() => KrillActivation.SetUiHeld(g.number, true),
+							() => KrillActivation.SetUiHeld(g.number, false),
+							KrillUi.Panel2, KrillUi.GreenHi, 11, 50f, 22f);
+					}
+					else
+					{
+						KrillUi.TextButton(footer.transform, Loc("#LOC_KRILL_ui_trigger"), () => Trigger(g.number, g.isStock),
+							KrillUi.Panel2, KrillUi.GreenHi, 11, 50f, 22f);
+					}
+				}
+
+				if (!g.isStock)
+				{
+					string kindLabel = Loc(KindLocKey(kind));
+					KrillUi.TextButton(footer.transform, kindLabel, () => CycleKind(g.number),
+						KrillUi.Panel2, KrillUi.TanDim, 11, 65f, 22f);
+
+					if (kind == KrillActuationKind.Toggle || kind == KrillActuationKind.Hold)
+					{
+						bool state = gs.Value.active;
+						string stateLabel = Localizer.Format("#LOC_KRILL_ui_stateLabel", state ? "1" : "0");
+						Color stateColor = state ? KrillUi.GreenHi : KrillUi.TanDim;
+						KrillUi.TextButton(footer.transform, stateLabel, () => ForceState(g.number, !state),
+							KrillUi.Panel2, stateColor, 11, 60f, 22f);
+					}
 				}
 
 				string bindInfo = Localizer.Format("#LOC_KRILL_ui_bindInfo", g.number.ToString(), g.bind);
@@ -982,6 +1056,69 @@ namespace KRILL.UI
 			{
 				KrillActivation.Activate(v, group);
 			}
+		}
+
+		private static string KindLocKey(KrillActuationKind kind)
+		{
+			switch (kind)
+			{
+				case KrillActuationKind.Toggle: return "#LOC_KRILL_ui_kindToggle";
+				case KrillActuationKind.Hold: return "#LOC_KRILL_ui_kindHold";
+				default: return "#LOC_KRILL_ui_kindSwitch";
+			}
+		}
+
+		private void CycleKind(int group)
+		{
+			Part root = RootPart();
+			ModuleKrill m = root != null ? root.FindModuleImplementing<ModuleKrill>() : null;
+			if (m == null)
+			{
+				return;
+			}
+			KrillActuationKind current = m.GetActuationKind(activeSet, group);
+			KrillActuationKind next;
+			switch (current)
+			{
+				case KrillActuationKind.Switch: next = KrillActuationKind.Toggle; break;
+				case KrillActuationKind.Toggle: next = KrillActuationKind.Hold; break;
+				default: next = KrillActuationKind.Switch; break;
+			}
+			m.SetActuationKind(activeSet, group, next);
+			RebuildContent();
+		}
+
+		/// <summary>
+		/// Force-sets the informational toggle bool WITHOUT invoking any action —
+		/// the resync control from the 2026-08-19 design discussion: another mod,
+		/// or the player from the part's right-click menu, can change a part's real
+		/// state without ever going through the KRILL group, leaving the
+		/// informational bool stale. This corrects the bool alone, in either scene
+		/// (editor: declare a starting label before launch; flight: resync after
+		/// external drift) — deliberately calls SetToggleState, never
+		/// KrillActivation.Activate, so nothing gets (re-)fired as a side effect.
+		///
+		/// IMPORTANT, confirmed by testing 2026-08-19: because Activate always
+		/// flips relative to the CURRENT bool, forcing it changes which direction
+		/// the next real press (key or Trigger) sends. Force State to 1 on a
+		/// physically-off part and the next press sends Deactivate first (often
+		/// invisible, since the part is already off) — the part only visibly
+		/// reacts on the press AFTER that, once the bool has flipped back to 0 and
+		/// a press finally sends Activate. Looks like "it took two clicks to sync
+		/// up" but there's no synchronization happening — it's the same flip
+		/// mechanics as always, just starting from a label the player just set by
+		/// hand instead of from an earlier real press.
+		/// </summary>
+		private void ForceState(int group, bool active)
+		{
+			Part root = RootPart();
+			ModuleKrill m = root != null ? root.FindModuleImplementing<ModuleKrill>() : null;
+			if (m == null)
+			{
+				return;
+			}
+			m.SetToggleState(activeSet, group, active);
+			RebuildContent();
 		}
 
 		// -------------------------------------------------------------- bind capture

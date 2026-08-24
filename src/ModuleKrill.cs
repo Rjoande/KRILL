@@ -59,6 +59,22 @@ namespace KRILL
 			MarkDirty();
 		}
 
+		/// <summary>
+		/// Actuation kind label (2026-08-19 design discussion) — whether the toggle
+		/// state above is meant to be trusted as real informational state by
+		/// external readers. Same root-part convention as the toggle state itself.
+		/// </summary>
+		public KrillActuationKind GetActuationKind(int set, int group)
+		{
+			return Data.GetKind(set, group);
+		}
+
+		public void SetActuationKind(int set, int group, KrillActuationKind kind)
+		{
+			Data.SetKind(set, group, kind);
+			MarkDirty();
+		}
+
 		private void EnsureLoaded()
 		{
 			if (data != null)

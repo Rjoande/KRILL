@@ -1,8 +1,12 @@
 # Changelog
 
+## v0.1.3
+
+- **Switch/Toggle/Hold actuation kind** for extended groups: a per-group, per-set footer selector declaring how the group behaves. Switch (default) behaves exactly as before. Toggle groups expose a real, meaningful persisted state through a new public read API for other mods (e.g. [KRAB](https://github.com/Rjoande/KRAB)) and through a manual "force state" control in the KRILL window, for resyncing after the real part state changes outside KRILL (another mod, ore the part's right-click menu) without firing the assigned action again. Hold groups stay active only while the key or the window's Trigger button is physically held, same idea as stock's own Brakes group.
+
 ## v0.1.2
 
-- **IVA monitor support** via MFD Extended (bay D): if both mods are installed, KRILL gets a screen on any compatible multi-function display prop, reachable without leaving the cockpit. Purely additive: nothing changes if MFD Extended isn't installed.
+- **IVA monitor support** via [MFD Extension](https://github.com/Rjoande/MFD-Extension) (bay D): if both mods are installed, KRILL gets a screen on any compatible multi-function display prop, reachable without leaving the cockpit. Purely additive: nothing changes if MFD Extension isn't installed.
 
 ## v0.1.1
 

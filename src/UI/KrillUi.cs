@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace KRILL.UI
@@ -129,6 +130,52 @@ namespace KRILL.UI
 				le.preferredWidth = width;
 			}
 			return button;
+		}
+
+		/// <summary>
+		/// Same visual as TextButton, but drives separate press/release callbacks
+		/// via EventTrigger (PointerDown/PointerUp) instead of a single onClick —
+		/// for controls that must track "held", not "clicked" (Hold-kind groups'
+		/// Trigger button, 2026-08-19). Unity's EventSystem keeps delivering
+		/// PointerUp to the object that received PointerDown even if the cursor has
+		/// moved off it by release time, so a normal drag-off-then-release still
+		/// calls onRelease correctly. Still adds a Button (colors only, onClick
+		/// left unwired) purely for the same hover/press visual feedback as every
+		/// other button in this UI.
+		/// </summary>
+		public static void HoldButton(Transform parent, string text, UnityAction onPress, UnityAction onRelease,
+			Color background, Color textColor, int fontSize = 13, float width = 0f, float height = 24f)
+		{
+			Image image = Panel_("Button", parent, background);
+			Button button = image.gameObject.AddComponent<Button>();
+			button.targetGraphic = image;
+			ColorBlock colors = button.colors;
+			colors.normalColor = Color.white;
+			colors.highlightedColor = new Color(1.15f, 1.15f, 1.15f);
+			colors.pressedColor = new Color(0.85f, 0.85f, 0.85f);
+			button.colors = colors;
+			HorizontalLayoutGroup inner = image.gameObject.AddComponent<HorizontalLayoutGroup>();
+			inner.padding = new RectOffset(10, 10, 3, 3);
+			inner.childAlignment = TextAnchor.MiddleCenter;
+			inner.childForceExpandWidth = false;
+			inner.childForceExpandHeight = false;
+			inner.childControlWidth = true;
+			inner.childControlHeight = true;
+			Label(image.transform, text, fontSize, textColor, TextAnchor.MiddleCenter);
+			LayoutElement le = image.gameObject.AddComponent<LayoutElement>();
+			le.preferredHeight = height;
+			if (width > 0f)
+			{
+				le.preferredWidth = width;
+			}
+
+			EventTrigger trigger = image.gameObject.AddComponent<EventTrigger>();
+			EventTrigger.Entry down = new EventTrigger.Entry { eventID = EventTriggerType.PointerDown };
+			down.callback.AddListener(_ => onPress());
+			trigger.triggers.Add(down);
+			EventTrigger.Entry up = new EventTrigger.Entry { eventID = EventTriggerType.PointerUp };
+			up.callback.AddListener(_ => onRelease());
+			trigger.triggers.Add(up);
 		}
 
 		public static VerticalLayoutGroup Vertical(GameObject go, int padding, float spacing,

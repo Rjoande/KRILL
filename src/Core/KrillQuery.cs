@@ -236,5 +236,57 @@ namespace KRILL
 		{
 			return ExtendedGroupsUnlocked(true) || ExtendedGroupsUnlocked(false);
 		}
+
+		/// <summary>
+		/// Kind + persisted on/off state of one (set, group), returned together so
+		/// there's never a reason to call ModuleKrill directly instead of this query
+		/// — same struct, same fields, whether the caller is the KRILL window
+		/// itself or an external mod (2026-08-19: unifying internal/external
+		/// reading was an explicit request, not just "add an external API").
+		/// `active` is the real, always-present persisted bool (KRILL needs it
+		/// internally regardless of kind, to alternate Activate/Deactivate on the
+		/// next press) — deliberately NOT hidden/nulled for Switch groups; the
+		/// point of one source of truth is that every caller decides what to do
+		/// with `kind` themselves, instead of the API silently making that call for
+		/// them. See KrillActuationKind for the full reasoning on why Switch's
+		/// `active` isn't a promise of anything real.
+		/// </summary>
+		public readonly struct GroupState
+		{
+			public readonly KrillActuationKind kind;
+			public readonly bool active;
+
+			public GroupState(KrillActuationKind kind, bool active)
+			{
+				this.kind = kind;
+				this.active = active;
+			}
+		}
+
+		/// <summary>Scene-agnostic form, used by the KRILL window itself (root part + already-resolved active set, works in both editor and flight — see KrillWindow.RootPart/activeSet). Null only if rootPart carries no KRILL data at all.</summary>
+		public static GroupState? GetGroupState(Part rootPart, int set, int group)
+		{
+			ModuleKrill root = rootPart != null ? rootPart.FindModuleImplementing<ModuleKrill>() : null;
+			if (root == null)
+			{
+				return null;
+			}
+			return new GroupState(root.GetActuationKind(set, group), root.GetToggleState(set, group));
+		}
+
+		/// <summary>
+		/// Public read API for other mods (and the future HUD/MFD): resolves the
+		/// vessel's CURRENTLY ACTIVE override set automatically (same resolution
+		/// KrillActivation.Activate uses) and delegates to the overload above.
+		/// </summary>
+		public static GroupState? GetGroupState(Vessel v, int group)
+		{
+			if (v == null)
+			{
+				return null;
+			}
+			int set = GameSettings.ADDITIONAL_ACTION_GROUPS ? v.GroupOverride : 0;
+			return GetGroupState(v.rootPart, set, group);
+		}
 	}
 }

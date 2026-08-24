@@ -43,6 +43,21 @@ namespace KRILL
 			return true;
 		}
 
+		/// <summary>
+		/// True while the primary is currently held — no edge, no modifier check
+		/// (Hold-kind groups only, 2026-08-19). Deliberately a level check, not a
+		/// GetKeyDown/GetKeyUp edge pair: KrillInputManager polls this every frame
+		/// and resyncs the persisted bool to match, so a missed key-up (losing OS
+		/// focus mid-hold, switching active vessel mid-hold) self-corrects on the
+		/// next frame instead of leaving the group stuck. Mirrors stock's own
+		/// BRAKES handling in spirit (FlightInputHandler.cs, verified on
+		/// decompiled source) but as a resync loop instead of two edge callbacks.
+		/// </summary>
+		public bool IsHeld()
+		{
+			return !IsNone && Input.GetKey(primary);
+		}
+
 		/// <summary>True if this and other share the same primary key (see Matches doc for why this is the relevant conflict test).</summary>
 		public bool SharesPrimaryWith(KrillBind other)
 		{
