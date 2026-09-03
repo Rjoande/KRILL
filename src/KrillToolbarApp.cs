@@ -19,7 +19,7 @@ namespace KRILL
 	/// A single class can't carry two [KSPAddon] attributes (AllowMultiple=false),
 	/// so the shared logic lives here and two near-empty subclasses below each
 	/// pick up one scene — a fresh instance (and a fresh ToolbarControl) per scene
-	/// load, same pattern AGSetHUD already uses.
+	/// load, a standard ToolbarControl pattern.
 	/// </summary>
 	public class KrillToolbarApp : MonoBehaviour
 	{
@@ -40,6 +40,17 @@ namespace KRILL
 				"KRILL/Textures/KRILL_24",
 				MODNAME);
 			UI.KrillWindow.OnClosed = () => toolbarControl.SetFalse(false);
+
+#if KRILL_CONSOLE_PREVIEW
+			// Right-click toggles the flight-only Console (2026-08-30) — kept as
+			// a permanent shortcut, not just a debug aid for the current
+			// geometry test. No-op outside flight (UI.KrillConsole.current is
+			// null there); left-click keeps its existing onTrue/onFalse window
+			// toggle untouched, so a no-op is passed for onLeftClick here.
+			// Preview builds only (see KRILL.csproj): the console is not
+			// finished, a release build has no right-click behavior at all.
+			toolbarControl.AddLeftRightClickCallbacks(() => { }, UI.KrillConsole.ToggleVisible);
+#endif
 		}
 
 		public void OnDestroy()

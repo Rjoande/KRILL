@@ -84,13 +84,19 @@ namespace KRILL
 	}
 
 	/// <summary>
-	/// Persisted on/off state of one (set, group), the KRILL equivalent of stock's
+	/// Persisted DIRECTION bit of one (set, group): whether the next Fire sends
+	/// Activate or Deactivate — the KRILL equivalent of stock's
 	/// ActionGroupList.groups / groupStates bool arrays (verified on decompiled
-	/// ActionGroupList.ToggleGroup). By convention lives on the vessel ROOT part's
-	/// ModuleKrill only (same convention already used for KrillGroupName) so it
-	/// survives quicksave/quickload and scene changes exactly like stock's own
-	/// action group states. No inheritance rule here (unlike names): each (set,
-	/// group) pair has its own independent state, defaulting to false if absent.
+	/// ActionGroupList.ToggleGroup), flipped on every Pulse/Toggle press exactly
+	/// like stock. PRIVATE BOOKKEEPING (2026-09-02): nothing external reads it,
+	/// the signal readers consume lives elsewhere (KrillGroupSignal for Toggle,
+	/// KrillSignal for Pulse/Hold). Hold-kind groups never write it. By
+	/// convention lives on the vessel ROOT part's ModuleKrill only (same
+	/// convention already used for KrillGroupName) so it survives quicksave/
+	/// quickload and scene changes exactly like stock's own group states. No
+	/// inheritance rule (unlike names): each (set, group) pair is independent,
+	/// defaulting to false if absent. Node name kept as KRILL_TOGGLE for
+	/// craft-file continuity.
 	/// </summary>
 	public class KrillGroupToggle
 	{
@@ -122,32 +128,84 @@ namespace KRILL
 	}
 
 	/// <summary>
-	/// How to interpret one (set, group)'s persisted toggle bool (KrillGroupToggle),
-	/// for EXTERNAL readers (other mods, the future HUD/MFD) — a pure semantic
-	/// label, decided in the 2026-08-19 design discussion. Changes nothing about
-	/// how KrillActivation invokes actions: every group still flips the same
-	/// internal bool on every press regardless of kind, because KRILL still needs
-	/// SOME direction to send (Activate/Deactivate) on the next press either way.
+	/// Persisted SIGNAL of a Toggle-kind (set, group): the 0/1 the player means
+	/// by it ("this reads as 1 to me"), flipped on every press and writable by
+	/// hand from the KRILL window's State button. Deliberately a SEPARATE bool
+	/// from KrillGroupToggle (user decision 2026-09-02): a manual resync
+	/// reconciles the signal with the player's judgment, not with what the part
+	/// last received — so forcing it must never change which direction the next
+	/// press sends. Only ever written for Toggle groups; Pulse and Hold keep
+	/// their (transient) signal in KrillSignal instead. Same root-part
+	/// convention and same per-set independence as the direction bit.
+	/// </summary>
+	public class KrillGroupSignal
+	{
+		public const string NodeName = "KRILL_SIGNAL";
+
+		public int set;
+		public int group;
+		public bool value;
+
+		public void Save(ConfigNode node)
+		{
+			node.AddValue("set", set);
+			node.AddValue("group", group);
+			node.AddValue("value", value);
+		}
+
+		public static KrillGroupSignal Load(ConfigNode node)
+		{
+			KrillGroupSignal s = new KrillGroupSignal();
+			if (!node.TryGetValue("set", ref s.set) || !node.TryGetValue("group", ref s.group)
+				|| !node.TryGetValue("value", ref s.value)
+				|| s.set < 0 || s.set > Vessel.NumOverrideGroups || s.group < KrillGroups.FirstExtended)
+			{
+				Debug.LogWarning("[KRILL] dropping malformed group signal node: " + node);
+				return null;
+			}
+			return s;
+		}
+	}
+
+	/// <summary>
+	/// How one (set, group) produces the SIGNAL that external readers consume
+	/// (other mods such as KRAB, and the KRILL console) — 2026-08-19, reworked
+	/// 2026-08-31 and again 2026-09-02 (notes/kind-signal-analysis.md).
 	///
-	/// Switch (default): the flip-flop is internal bookkeeping only, not a promise
-	/// of anything real — e.g. a group bound to a one-shot action (a decoupler)
-	/// still has a bool that alternates every press, but it corresponds to no
-	/// physical state. Toggle: the player is declaring the persisted bool IS
-	/// meaningful (a light, anything genuinely stateful) — the public read API
-	/// (KrillQuery.GetGroupState) only ever returns a real value for these, and
-	/// the KRILL window offers a way to force-correct the bool directly (no
-	/// action invoked) for when the real part state drifts out of sync via
-	/// another mod or a manual PAW click.
+	/// Key principle: what a reader sees is KrillQuery.GroupState.signal, a
+	/// plain 0/1 level whatever the kind — consumers need no kind-specific
+	/// logic at all: 1 means lit, 0 means not. The kind only decides WHERE that
+	/// level lives and, for Hold alone, how the part is actuated. The persisted
+	/// direction bit (KrillGroupToggle) is private bookkeeping for the
+	/// Activate/Deactivate alternation and is never the signal.
 	///
-	/// Hold (2026-08-19, added after confirming stock's own Brakes action group
-	/// works this way — FlightInputHandler.cs, decompiled): a genuinely
-	/// different ACTIVATION mechanism, not just a label — active only while the
-	/// key/UI control is physically held (KrillActivation.SetActive), never a
-	/// press-to-flip. Its state is always meaningful, same as Toggle.
+	/// Pulse (default; named "Switch" before 2026-08-31 — renamed because
+	/// "pulse vs toggle" survives translation far better): a momentary contact.
+	/// The action fires once per press exactly as before; the signal goes to 1
+	/// and returns to 0 by itself after KrillSignal.PulseSeconds. Runtime only,
+	/// never persisted. Correct for a group bound to a one-shot action (a
+	/// decoupler), where an alternating bool corresponds to no physical state.
+	///
+	/// Toggle: the signal is its own PERSISTED bool (KrillGroupSignal), flipped
+	/// per press, and the only kind where the window offers a manual
+	/// force-correct of it (no action invoked, direction bit untouched) — for
+	/// when the real part state drifts out of sync via another mod or a manual
+	/// PAW click, or simply when the player decides what 1 means.
+	///
+	/// Hold (2026-08-19, after confirming stock's own Brakes group works this
+	/// way — FlightInputHandler.cs, decompiled): the one kind with a different
+	/// ACTUATION mechanism — Activate when the level goes 0 -> 1, Deactivate
+	/// when it goes 1 -> 0 (KrillActivation.HoldPress/HoldRelease), never a
+	/// press-to-flip. The level is the set of sources (key, window, console)
+	/// currently pressing it (KrillSignal), runtime only: a hold can't survive
+	/// a save because there is no key still down after a load. Deliberately NO
+	/// minimum duration (user decision 2026-08-31): a brief tap yields a brief
+	/// 1, because Hold is a level and a floor would break the "held means held"
+	/// contract readers rely on — unlike Pulse, which IS a timed shape.
 	/// </summary>
 	public enum KrillActuationKind
 	{
-		Switch = 0,
+		Pulse = 0,
 		Toggle = 1,
 		Hold = 2,
 	}
@@ -155,7 +213,7 @@ namespace KRILL
 	/// <summary>
 	/// Sparse per-(set, group) actuation-kind label, same shape/scoping as
 	/// KrillGroupToggle (independent per set, no inheritance — a group can mean
-	/// something different from one set to another). Absent = Switch.
+	/// something different from one set to another). Absent = Pulse.
 	/// </summary>
 	public class KrillGroupKind
 	{
@@ -172,6 +230,11 @@ namespace KRILL
 			node.AddValue("kind", kind.ToString());
 		}
 
+		// Note: the kind serializes BY NAME. A craft saved before the 2026-08-31
+		// Switch -> Pulse rename would carry `kind = Switch` and be dropped here
+		// as malformed, falling back to the default (Pulse — the same thing). No
+		// legacy shim by user decision (2026-09-02): the mechanic was only ever
+		// tested on freshly built craft, and the fallback is already the right value.
 		public static KrillGroupKind Load(ConfigNode node)
 		{
 			KrillGroupKind k = new KrillGroupKind();
@@ -184,6 +247,60 @@ namespace KRILL
 				return null;
 			}
 			return k;
+		}
+	}
+
+	/// <summary>
+	/// Console severity label for one (set, group), independent of KrillActuationKind:
+	/// kind describes HOW a group activates, this describes how the future flight
+	/// console should COLOR it (2026-08-24 design discussion; named "console", not
+	/// "HUD" — 2026-08-27, it's a clickable button grid, not a see-through overlay).
+	/// Purely cosmetic — carries no behavior of its own until the console reads it.
+	/// Unlike kind, allowed on stock groups (1..10) too: the console grid shows
+	/// those groups exactly like extended ones (same precedent as KrillGroupName),
+	/// and severity has no dependency on which engine (stock or KRILL) actually
+	/// runs the group.
+	/// </summary>
+	public enum KrillIndicatorType
+	{
+		Info = 0,
+		Caution = 1,
+		Warning = 2,
+	}
+
+	/// <summary>
+	/// Sparse per-(set, group) indicator-type label, same shape/scoping as
+	/// KrillGroupKind (independent per set, no inheritance). Absent = Info, the
+	/// least alarming value — same "absent = least invasive" convention as kind
+	/// defaulting to Pulse.
+	/// </summary>
+	public class KrillGroupIndicator
+	{
+		public const string NodeName = "KRILL_INDICATOR";
+
+		public int set;
+		public int group;
+		public KrillIndicatorType type;
+
+		public void Save(ConfigNode node)
+		{
+			node.AddValue("set", set);
+			node.AddValue("group", group);
+			node.AddValue("type", type.ToString());
+		}
+
+		public static KrillGroupIndicator Load(ConfigNode node)
+		{
+			KrillGroupIndicator ind = new KrillGroupIndicator();
+			string typeStr = null;
+			if (!node.TryGetValue("set", ref ind.set) || !node.TryGetValue("group", ref ind.group)
+				|| !node.TryGetValue("type", ref typeStr) || !System.Enum.TryParse(typeStr, out ind.type)
+				|| ind.set < 0 || ind.set > Vessel.NumOverrideGroups || ind.group < 1)
+			{
+				Debug.LogWarning("[KRILL] dropping malformed group indicator node: " + node);
+				return null;
+			}
+			return ind;
 		}
 	}
 
@@ -208,8 +325,11 @@ namespace KRILL
 		public readonly List<KrillGroupName> names = new List<KrillGroupName>();
 		public readonly List<KrillGroupToggle> toggles = new List<KrillGroupToggle>();
 		public readonly List<KrillGroupKind> kinds = new List<KrillGroupKind>();
+		public readonly List<KrillGroupIndicator> indicators = new List<KrillGroupIndicator>();
+		public readonly List<KrillGroupSignal> signals = new List<KrillGroupSignal>();
 
-		public bool IsEmpty => assignments.Count == 0 && names.Count == 0 && toggles.Count == 0 && kinds.Count == 0;
+		public bool IsEmpty => assignments.Count == 0 && names.Count == 0 && toggles.Count == 0 && kinds.Count == 0
+			&& indicators.Count == 0 && signals.Count == 0;
 
 		public void Clear()
 		{
@@ -217,6 +337,8 @@ namespace KRILL
 			names.Clear();
 			toggles.Clear();
 			kinds.Clear();
+			indicators.Clear();
+			signals.Clear();
 		}
 
 		/// <summary>Write payload into the module's persistence node (additive; caller owns the node).</summary>
@@ -237,6 +359,14 @@ namespace KRILL
 			for (int i = 0; i < kinds.Count; i++)
 			{
 				kinds[i].Save(node.AddNode(KrillGroupKind.NodeName));
+			}
+			for (int i = 0; i < indicators.Count; i++)
+			{
+				indicators[i].Save(node.AddNode(KrillGroupIndicator.NodeName));
+			}
+			for (int i = 0; i < signals.Count; i++)
+			{
+				signals[i].Save(node.AddNode(KrillGroupSignal.NodeName));
 			}
 		}
 
@@ -278,6 +408,24 @@ namespace KRILL
 				if (k != null)
 				{
 					kinds.Add(k);
+				}
+			}
+			ConfigNode[] indicatorNodes = node.GetNodes(KrillGroupIndicator.NodeName);
+			for (int i = 0; i < indicatorNodes.Length; i++)
+			{
+				KrillGroupIndicator ind = KrillGroupIndicator.Load(indicatorNodes[i]);
+				if (ind != null)
+				{
+					indicators.Add(ind);
+				}
+			}
+			ConfigNode[] signalNodes = node.GetNodes(KrillGroupSignal.NodeName);
+			for (int i = 0; i < signalNodes.Length; i++)
+			{
+				KrillGroupSignal s = KrillGroupSignal.Load(signalNodes[i]);
+				if (s != null)
+				{
+					signals.Add(s);
 				}
 			}
 		}
@@ -369,6 +517,8 @@ namespace KRILL
 			removed += names.RemoveAll(n => n.set == set && n.group == group);
 			removed += toggles.RemoveAll(t => t.set == set && t.group == group);
 			removed += kinds.RemoveAll(k => k.set == set && k.group == group);
+			removed += indicators.RemoveAll(ind => ind.set == set && ind.group == group);
+			removed += signals.RemoveAll(s => s.set == set && s.group == group);
 			return removed > 0;
 		}
 
@@ -417,7 +567,7 @@ namespace KRILL
 			return fromDefault;
 		}
 
-		/// <summary>Current on/off state of (set, group); false if never toggled.</summary>
+		/// <summary>Direction bit of (set, group) — private bookkeeping, see KrillGroupToggle; false if never fired.</summary>
 		public bool GetToggle(int set, int group)
 		{
 			for (int i = 0; i < toggles.Count; i++)
@@ -443,7 +593,33 @@ namespace KRILL
 			toggles.Add(new KrillGroupToggle { set = set, group = group, active = active });
 		}
 
-		/// <summary>Current actuation kind of (set, group); Switch if never set.</summary>
+		/// <summary>Persisted Toggle-kind signal of (set, group); false if never set. Meaningful only when the kind is Toggle (see KrillGroupSignal).</summary>
+		public bool GetSignal(int set, int group)
+		{
+			for (int i = 0; i < signals.Count; i++)
+			{
+				if (signals[i].set == set && signals[i].group == group)
+				{
+					return signals[i].value;
+				}
+			}
+			return false;
+		}
+
+		public void SetSignal(int set, int group, bool value)
+		{
+			for (int i = 0; i < signals.Count; i++)
+			{
+				if (signals[i].set == set && signals[i].group == group)
+				{
+					signals[i].value = value;
+					return;
+				}
+			}
+			signals.Add(new KrillGroupSignal { set = set, group = group, value = value });
+		}
+
+		/// <summary>Current actuation kind of (set, group); Pulse if never set.</summary>
 		public KrillActuationKind GetKind(int set, int group)
 		{
 			for (int i = 0; i < kinds.Count; i++)
@@ -453,7 +629,7 @@ namespace KRILL
 					return kinds[i].kind;
 				}
 			}
-			return KrillActuationKind.Switch;
+			return KrillActuationKind.Pulse;
 		}
 
 		public void SetKind(int set, int group, KrillActuationKind kind)
@@ -467,6 +643,32 @@ namespace KRILL
 				}
 			}
 			kinds.Add(new KrillGroupKind { set = set, group = group, kind = kind });
+		}
+
+		/// <summary>Current console severity of (set, group); Info if never set. Valid for stock groups too.</summary>
+		public KrillIndicatorType GetIndicatorType(int set, int group)
+		{
+			for (int i = 0; i < indicators.Count; i++)
+			{
+				if (indicators[i].set == set && indicators[i].group == group)
+				{
+					return indicators[i].type;
+				}
+			}
+			return KrillIndicatorType.Info;
+		}
+
+		public void SetIndicatorType(int set, int group, KrillIndicatorType type)
+		{
+			for (int i = 0; i < indicators.Count; i++)
+			{
+				if (indicators[i].set == set && indicators[i].group == group)
+				{
+					indicators[i].type = type;
+					return;
+				}
+			}
+			indicators.Add(new KrillGroupIndicator { set = set, group = group, type = type });
 		}
 	}
 }

@@ -134,13 +134,20 @@ namespace KRILL.UI
 
 		/// <summary>
 		/// Same visual as TextButton, but drives separate press/release callbacks
-		/// via EventTrigger (PointerDown/PointerUp) instead of a single onClick —
-		/// for controls that must track "held", not "clicked" (Hold-kind groups'
-		/// Trigger button, 2026-08-19). Unity's EventSystem keeps delivering
-		/// PointerUp to the object that received PointerDown even if the cursor has
-		/// moved off it by release time, so a normal drag-off-then-release still
-		/// calls onRelease correctly. Still adds a Button (colors only, onClick
-		/// left unwired) purely for the same hover/press visual feedback as every
+		/// (PointerDown/PointerUp) instead of a single onClick — for controls that
+		/// must track "held", not "clicked" (Hold-kind groups' Trigger button,
+		/// 2026-08-19). Unity's EventSystem keeps delivering PointerUp to the
+		/// object that received PointerDown even if the cursor has moved off it
+		/// by release time, so a drag-off-then-release still calls onRelease.
+		///
+		/// The release is ALSO guaranteed by the button's own lifecycle
+		/// (HoldTracker.OnDisable, 2026-09-02): if the button is destroyed or
+		/// hidden while pressed — a content rebuild, the window closing, a scene
+		/// change — it releases itself before going away, so a press can never
+		/// be orphaned by losing the object that would have received the
+		/// PointerUp. Same pattern FocusLock/TypingLock below already use for
+		/// their control locks. Still adds a Button (colors only, onClick left
+		/// unwired) purely for the same hover/press visual feedback as every
 		/// other button in this UI.
 		/// </summary>
 		public static void HoldButton(Transform parent, string text, UnityAction onPress, UnityAction onRelease,
@@ -169,13 +176,50 @@ namespace KRILL.UI
 				le.preferredWidth = width;
 			}
 
-			EventTrigger trigger = image.gameObject.AddComponent<EventTrigger>();
-			EventTrigger.Entry down = new EventTrigger.Entry { eventID = EventTriggerType.PointerDown };
-			down.callback.AddListener(_ => onPress());
-			trigger.triggers.Add(down);
-			EventTrigger.Entry up = new EventTrigger.Entry { eventID = EventTriggerType.PointerUp };
-			up.callback.AddListener(_ => onRelease());
-			trigger.triggers.Add(up);
+			HoldTracker tracker = image.gameObject.AddComponent<HoldTracker>();
+			tracker.onPress = onPress;
+			tracker.onRelease = onRelease;
+		}
+
+		/// <summary>Press/release tracker for HoldButton — see its doc. Left button only, matching Selectable's own press handling on the same object.</summary>
+		private class HoldTracker : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
+		{
+			public UnityAction onPress;
+			public UnityAction onRelease;
+			private bool pressed;
+
+			public void OnPointerDown(PointerEventData eventData)
+			{
+				if (eventData.button != PointerEventData.InputButton.Left || pressed)
+				{
+					return;
+				}
+				pressed = true;
+				onPress?.Invoke();
+			}
+
+			public void OnPointerUp(PointerEventData eventData)
+			{
+				if (eventData.button == PointerEventData.InputButton.Left)
+				{
+					Release();
+				}
+			}
+
+			private void OnDisable()
+			{
+				Release();
+			}
+
+			private void Release()
+			{
+				if (!pressed)
+				{
+					return;
+				}
+				pressed = false;
+				onRelease?.Invoke();
+			}
 		}
 
 		public static VerticalLayoutGroup Vertical(GameObject go, int padding, float spacing,

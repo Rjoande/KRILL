@@ -11,9 +11,9 @@ namespace KRILL
 	/// decides WHAT the group does, never which key triggers it.
 	///
 	/// Persisted under PluginData/, not directly in GameData: ModuleManager never
-	/// scans a "PluginData" folder for patches (a standing KSP-modding convention,
-	/// the same reason AGSetHUD keeps its own settings.cfg there), so saving the
-	/// keymap here never triggers an MM cache rebuild.
+	/// scans a "PluginData" folder for patches (a standing KSP-modding convention
+	/// many mods rely on for exactly this reason), so saving the keymap here never
+	/// triggers an MM cache rebuild.
 	/// </summary>
 	public static class KrillKeymap
 	{

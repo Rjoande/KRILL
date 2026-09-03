@@ -8,128 +8,164 @@ namespace KRILL
 	{
 		Locked,
 		NoRootModule,
+		/// <summary>Nothing to do: a Hold press on a group already held, or a release from a source that wasn't holding it.</summary>
+		Unchanged,
 		Activated,
 		Deactivated,
 	}
 
 	/// <summary>
-	/// The activation engine (M2), extracted to a shared static so both the
-	/// keymap poll (KrillInputManager, key press) and the M3 UI (manual trigger
-	/// button) invoke a KRILL group through the exact same path — one place to
-	/// get the semantics right, no risk of the two drifting apart.
+	/// The activation engine (M2), shared by every input path — keymap poll
+	/// (KrillInputManager), the KRILL window's buttons, the future console — so
+	/// there is exactly one place that touches a part's actions and one place
+	/// that writes the reported signal (KrillSignal / the root part's persisted
+	/// bools). Three entry points, one per way a group can be driven:
 	///
-	/// Mirrors stock's ActionGroupList.ToggleGroup line for line (verified on
-	/// decompiled source): flip a persisted per-(set,group) bool, build a
-	/// KSPActionParam with the resolved direction, invoke every BaseAction.
-	/// KSPActionGroup.None is the placeholder group field on the param — AGExt
-	/// does the same for its own virtual (non-bitmask) groups, confirmed via
-	/// reflection, and the overwhelming majority of KSPAction method bodies
-	/// never look at that field anyway (they act on param.type).
+	///   Fire        - Pulse/Toggle press (key edge or UI click). Mirrors stock's
+	///                 ActionGroupList.ToggleGroup line for line (verified on
+	///                 decompiled source): flip a persisted per-(set,group)
+	///                 direction bit, invoke every BaseAction with the resolved
+	///                 Activate/Deactivate. KSPActionGroup.None is the placeholder
+	///                 group on the param — AGExt does the same for its virtual
+	///                 groups, and nearly every KSPAction body only ever looks at
+	///                 param.type anyway.
+	///   HoldPress   - Hold-kind press from one source (key, window, console):
+	///   HoldRelease   Activate when the group's level goes 0 -> 1, Deactivate
+	///                 when it goes 1 -> 0, exactly like stock's own BRAKES
+	///                 handling (FlightInputHandler.cs: SetGroup(true) on key
+	///                 down, SetGroup(false) on key up). The level itself is the
+	///                 set of sources currently pressing (KrillSignal), so the
+	///                 signal changes in the same call that actuates — no
+	///                 poller, no frame of lag, nothing persisted.
 	///
-	/// Toggle state lives on the vessel root part's ModuleKrill (design doc §5,
-	/// "by convention on the vessel root" — the same rule already used for group
-	/// display names) so it survives quicksave/quickload and scene changes
-	/// exactly like stock's own ActionGroupList.
+	/// Signal vs direction (2026-09-02 rework, notes/kind-signal-analysis.md):
+	/// the persisted direction bit (KrillGroupToggle) is PRIVATE bookkeeping —
+	/// it only decides whether the next Fire sends Activate or Deactivate, for
+	/// Pulse and Toggle alike, and nothing external reads it. What readers see
+	/// is KrillQuery.GroupState.signal, kept per kind in its own storage:
+	/// Pulse in a runtime timer, Toggle in a SEPARATE persisted bool
+	/// (KrillGroupSignal, the one the player can force by hand), Hold in the
+	/// live source set. Hold never touches the direction bit at all — there is
+	/// nothing about a hold worth persisting.
 	/// </summary>
 	public static class KrillActivation
 	{
 		/// <summary>
-		/// Fired after a real Activate/Deactivate (never on Locked/NoRootModule,
-		/// nothing changed there) — the KRILL window subscribes so its footer's
-		/// State label stays live whether the group fired from a real keypress
-		/// (KrillInputManager) or the UI's own Trigger button, without either path
-		/// needing to know the window exists (2026-08-19: found by testing — the
-		/// footer showed the right value only right after a manual force-set,
-		/// because nothing ever told an open window a real activation had
-		/// happened).
+		/// Fired after a real Activate/Deactivate (never on Locked/NoRootModule/
+		/// Unchanged, nothing changed there) — the KRILL window subscribes so its
+		/// footer stays live whether the group fired from a keypress or its own
+		/// buttons, without either path needing to know the window exists.
 		/// </summary>
 		public static event Action<Vessel, int> GroupActivated;
 
-		/// <summary>Groups currently asserted "held" by a UI control (the Hold-kind Trigger button's press-and-hold, 2026-08-19) — merged with the physical key's own per-frame held state by KrillInputManager, so the two sources never fight over the same group (see HOLD design note on SetActive below).</summary>
-		private static readonly HashSet<int> uiHeldGroups = new HashSet<int>();
-
-		public static void SetUiHeld(int group, bool held)
+		/// <summary>The set a press/release resolves against — the vessel's live override set, same resolution stock uses for its own groups.</summary>
+		internal static int ActiveSet(Vessel v)
 		{
-			if (held)
-			{
-				uiHeldGroups.Add(group);
-			}
-			else
-			{
-				uiHeldGroups.Remove(group);
-			}
-		}
-
-		public static bool IsUiHeld(int group)
-		{
-			return uiHeldGroups.Contains(group);
-		}
-
-		/// <summary>Every group currently UI-held — KrillInputManager unions this with the keymap's own bound groups so a Hold-kind group with NO keybind (UI-only control) still gets polled, the same parity Switch/Toggle's Trigger already has.</summary>
-		public static IEnumerable<int> UiHeldGroups => uiHeldGroups;
-
-		/// <summary>Safety net for the UI hold source: called when the KRILL window is destroyed (closed, scene change) while a Hold-kind Trigger button might still be physically pressed — forces every UI-held group off instead of leaving the persisted bool stuck "on" (which, unlike stock's own transient BRAKES handling, KRILL would otherwise happily save to disk on the next quicksave).</summary>
-		public static void ReleaseAllUiHeld(Vessel v)
-		{
-			if (uiHeldGroups.Count == 0)
-			{
-				return;
-			}
-			List<int> groups = new List<int>(uiHeldGroups);
-			uiHeldGroups.Clear();
-			if (v == null)
-			{
-				return;
-			}
-			for (int i = 0; i < groups.Count; i++)
-			{
-				SetActive(v, groups[i], false);
-			}
-		}
-
-		public static KrillActivationResult Activate(Vessel v, int group)
-		{
-			if (!KrillQuery.ExtendedGroupsUnlockedAnywhere())
-			{
-				return Locked(group);
-			}
-			ModuleKrill rootData = v?.rootPart?.FindModuleImplementing<ModuleKrill>();
-			if (rootData == null)
-			{
-				return KrillActivationResult.NoRootModule;
-			}
-			int set = GameSettings.ADDITIONAL_ACTION_GROUPS ? v.GroupOverride : 0;
-			bool newState = !rootData.GetToggleState(set, group);
-			return Apply(v, rootData, set, group, newState);
+			return GameSettings.ADDITIONAL_ACTION_GROUPS ? v.GroupOverride : 0;
 		}
 
 		/// <summary>
-		/// Forces a direction instead of flipping — the HOLD-kind engine. Mirrors
-		/// stock's own BRAKES handling line for line (verified on decompiled
-		/// FlightInputHandler.cs, 2026-08-19): GetKeyDown -&gt; SetGroup(true),
-		/// GetKeyUp -&gt; SetGroup(false), never the ToggleGroup flip used by every
-		/// other stock group. KrillInputManager drives this per-frame as a
-		/// level-check (physical key currently held vs the persisted bool) rather
-		/// than pure edge callbacks — self-healing if a key-up is ever missed
-		/// (losing OS focus mid-hold, switching active vessel mid-hold), since the
-		/// very next frame that notices the mismatch corrects it. The UI's Hold
-		/// Trigger button (KrillUi.HoldButton) calls this directly instead, via
-		/// SetUiHeld/IsUiHeld so it doesn't fight the physical-key resync loop for
-		/// the same group.
+		/// Pulse/Toggle press. Flips the direction bit and actuates accordingly
+		/// (stock parity: the part always sees alternating Activate/Deactivate,
+		/// whatever the kind); then updates the kind's own signal — a Pulse
+		/// starts its timer, a Toggle flips its persisted signal bool. Note the
+		/// two Toggle bools are deliberately independent (user decision
+		/// 2026-09-02): the signal is the player's declared meaning ("this reads
+		/// as 1 to me"), the direction bit is what the part last received — a
+		/// manual resync of the former must never change what the part gets next.
 		/// </summary>
-		public static KrillActivationResult SetActive(Vessel v, int group, bool active)
+		public static KrillActivationResult Fire(Vessel v, int group)
 		{
 			if (!KrillQuery.ExtendedGroupsUnlockedAnywhere())
 			{
 				return Locked(group);
 			}
-			ModuleKrill rootData = v?.rootPart?.FindModuleImplementing<ModuleKrill>();
-			if (rootData == null)
+			ModuleKrill root = RootModule(v);
+			if (root == null)
 			{
 				return KrillActivationResult.NoRootModule;
 			}
-			int set = GameSettings.ADDITIONAL_ACTION_GROUPS ? v.GroupOverride : 0;
-			return Apply(v, rootData, set, group, active);
+			int set = ActiveSet(v);
+			bool direction = !root.GetToggleState(set, group);
+			root.SetToggleState(set, group, direction);
+			switch (root.GetActuationKind(set, group))
+			{
+				case KrillActuationKind.Pulse:
+					KrillSignal.StartPulse(v, set, group);
+					break;
+				case KrillActuationKind.Toggle:
+					root.SetToggleSignal(set, group, !root.GetToggleSignal(set, group));
+					break;
+			}
+			return Apply(v, root, set, group, direction);
+		}
+
+		/// <summary>Hold press from one source. Actuates only on the 0 -> 1 edge of the group's level; a second source pressing an already-held group just joins it.</summary>
+		public static KrillActivationResult HoldPress(Vessel v, int group, KrillHoldSource source)
+		{
+			if (!KrillQuery.ExtendedGroupsUnlockedAnywhere())
+			{
+				return Locked(group);
+			}
+			ModuleKrill root = RootModule(v);
+			if (root == null)
+			{
+				return KrillActivationResult.NoRootModule;
+			}
+			int set = ActiveSet(v);
+			if (!KrillSignal.AddSource(v, set, group, source))
+			{
+				return KrillActivationResult.Unchanged;
+			}
+			return Apply(v, root, set, group, true);
+		}
+
+		/// <summary>
+		/// Hold release from one source. Deactivates on the 1 -> 0 edge only,
+		/// and always where the press STARTED (the record's own vessel and set),
+		/// not wherever the player is now. Never gated by the career lock: a
+		/// source that managed to press can always release. A vessel that no
+		/// longer exists simply has nothing left to deactivate.
+		/// </summary>
+		public static KrillActivationResult HoldRelease(int group, KrillHoldSource source)
+		{
+			if (!KrillSignal.RemoveSource(group, source, out KrillSignal.HoldRecord record, out bool found) || !found)
+			{
+				return KrillActivationResult.Unchanged;
+			}
+			ModuleKrill root = RootModule(record.vessel);
+			if (root == null)
+			{
+				return KrillActivationResult.NoRootModule;
+			}
+			return Apply(record.vessel, root, record.set, record.group, false);
+		}
+
+		/// <summary>
+		/// Scene teardown (KrillInputManager.OnDestroy): every group still held
+		/// by any source gets its Deactivate now, on the vessel it was activated
+		/// on, then all runtime signal state is dropped. Unlike stock's BRAKES
+		/// (a transient control input the game never persists), a KRILL group's
+		/// action might be something the craft file DOES remember (a light, a
+		/// deployed part) — so the part must actually be told, not just forgotten.
+		/// </summary>
+		public static void ReleaseAllHolds()
+		{
+			List<KrillSignal.HoldRecord> held = KrillSignal.DrainHolds();
+			for (int i = 0; i < held.Count; i++)
+			{
+				ModuleKrill root = RootModule(held[i].vessel);
+				if (root != null)
+				{
+					Apply(held[i].vessel, root, held[i].set, held[i].group, false);
+				}
+			}
+			KrillSignal.ClearPulses();
+		}
+
+		private static ModuleKrill RootModule(Vessel v)
+		{
+			return v?.rootPart?.FindModuleImplementing<ModuleKrill>();
 		}
 
 		private static KrillActivationResult Locked(int group)
@@ -140,12 +176,14 @@ namespace KRILL
 			return KrillActivationResult.Locked;
 		}
 
-		/// <summary>Shared write+invoke+notify tail for both Activate (flip) and SetActive (forced direction) — one place that actually touches the persisted bool and calls BaseAction.Invoke, so the two entry points can never drift apart on what "activating" actually does.</summary>
-		private static KrillActivationResult Apply(Vessel v, ModuleKrill rootData, int set, int group, bool newState)
+		/// <summary>
+		/// The one place that calls BaseAction.Invoke and raises GroupActivated.
+		/// Touches no signal and no bookkeeping — each entry point above has
+		/// already written whatever its kind keeps, so this can't drift from them.
+		/// </summary>
+		private static KrillActivationResult Apply(Vessel v, ModuleKrill root, int set, int group, bool activate)
 		{
-			rootData.SetToggleState(set, group, newState);
-
-			KSPActionType actionType = newState ? KSPActionType.Activate : KSPActionType.Deactivate;
+			KSPActionType actionType = activate ? KSPActionType.Activate : KSPActionType.Deactivate;
 			KSPActionParam param = new KSPActionParam(KSPActionGroup.None, actionType);
 			List<BaseAction> actions = KrillQuery.GetActions(v.parts, set, group);
 			for (int i = 0; i < actions.Count; i++)
@@ -153,9 +191,9 @@ namespace KRILL
 				actions[i].Invoke(param);
 			}
 			Debug.LogFormat("[KRILL] group {0} set {1} -> {2} ({3} action(s))",
-				group, set, newState ? "ON" : "OFF", actions.Count);
+				group, set, activate ? "ON" : "OFF", actions.Count);
 			GroupActivated?.Invoke(v, group);
-			return newState ? KrillActivationResult.Activated : KrillActivationResult.Deactivated;
+			return activate ? KrillActivationResult.Activated : KrillActivationResult.Deactivated;
 		}
 	}
 }

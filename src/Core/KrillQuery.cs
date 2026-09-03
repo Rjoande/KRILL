@@ -238,28 +238,47 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Kind + persisted on/off state of one (set, group), returned together so
-		/// there's never a reason to call ModuleKrill directly instead of this query
-		/// — same struct, same fields, whether the caller is the KRILL window
-		/// itself or an external mod (2026-08-19: unifying internal/external
-		/// reading was an explicit request, not just "add an external API").
-		/// `active` is the real, always-present persisted bool (KRILL needs it
-		/// internally regardless of kind, to alternate Activate/Deactivate on the
-		/// next press) — deliberately NOT hidden/nulled for Switch groups; the
-		/// point of one source of truth is that every caller decides what to do
-		/// with `kind` themselves, instead of the API silently making that call for
-		/// them. See KrillActuationKind for the full reasoning on why Switch's
-		/// `active` isn't a promise of anything real.
+		/// Everything known about one (set, group), returned together so there's
+		/// never a reason to call ModuleKrill directly instead of this query —
+		/// same struct, same fields, whether the caller is the KRILL window itself
+		/// or an external mod (2026-08-19: unifying internal/external reading was
+		/// an explicit request, not just "add an external API").
+		///
+		/// READ `signal` (2026-08-31, storage per kind settled 2026-09-02). It is
+		/// the plain 0/1 level this group is currently presenting, already derived
+		/// from `kind`, and it is what both KRAB and the KRILL console consume —
+		/// identical code for both, with no kind-specific branch anywhere in the
+		/// consumer:
+		///   Pulse  -> 1 for KrillSignal.PulseSeconds after the group fires, then
+		///             back to 0 on its own (a momentary contact). Runtime only.
+		///   Toggle -> its own persisted bool (KrillGroupSignal), flipped per
+		///             press, forceable by the player from the window.
+		///   Hold   -> 1 while at least one source (key, window, console) is
+		///             holding it (KrillSignal). Runtime only.
+		///
+		/// `active` is the PRIVATE BOOKKEEPING direction bit and is NOT a state
+		/// reading: KRILL flips it on every Pulse/Toggle press purely to know
+		/// which of Activate/Deactivate to send next. For a Pulse group bound to
+		/// a one-shot action (a decoupler) it alternates forever while
+		/// corresponding to no physical state whatsoever — reading it as a level
+		/// is exactly the bug the signal split was created to end (found
+		/// 2026-08-30 via KRAB's bridge, which was reading `active`). Kept in the
+		/// struct because it is still the honest raw value, but external readers
+		/// should have no reason to touch it. The field names are part of the
+		/// reflection contract KRAB's KrillGroupBridge resolves by name — don't
+		/// rename them.
 		/// </summary>
 		public readonly struct GroupState
 		{
 			public readonly KrillActuationKind kind;
 			public readonly bool active;
+			public readonly bool signal;
 
-			public GroupState(KrillActuationKind kind, bool active)
+			public GroupState(KrillActuationKind kind, bool active, bool signal)
 			{
 				this.kind = kind;
 				this.active = active;
+				this.signal = signal;
 			}
 		}
 
@@ -271,13 +290,35 @@ namespace KRILL
 			{
 				return null;
 			}
-			return new GroupState(root.GetActuationKind(set, group), root.GetToggleState(set, group));
+			KrillActuationKind kind = root.GetActuationKind(set, group);
+			bool active = root.GetToggleState(set, group);
+			return new GroupState(kind, active, ReadSignal(root, rootPart.vessel, kind, set, group));
 		}
 
 		/// <summary>
-		/// Public read API for other mods (and the future HUD/MFD): resolves the
+		/// Picks the kind's own storage for the single 0/1 level readers consume
+		/// (see KrillSignal for why each kind keeps it where it does). In the
+		/// editor (no vessel) Pulse and Hold never read lit — nothing actuates
+		/// there in the first place; a Toggle's persisted signal still does, so
+		/// a value forced before launch shows up correctly.
+		/// </summary>
+		private static bool ReadSignal(ModuleKrill root, Vessel v, KrillActuationKind kind, int set, int group)
+		{
+			switch (kind)
+			{
+				case KrillActuationKind.Pulse:
+					return KrillSignal.IsPulsing(v, set, group);
+				case KrillActuationKind.Hold:
+					return KrillSignal.IsHeld(v, set, group);
+				default:
+					return root.GetToggleSignal(set, group);
+			}
+		}
+
+		/// <summary>
+		/// Public read API for other mods (and the console/MFD): resolves the
 		/// vessel's CURRENTLY ACTIVE override set automatically (same resolution
-		/// KrillActivation.Activate uses) and delegates to the overload above.
+		/// KrillActivation uses) and delegates to the overload above.
 		/// </summary>
 		public static GroupState? GetGroupState(Vessel v, int group)
 		{
@@ -285,8 +326,7 @@ namespace KRILL
 			{
 				return null;
 			}
-			int set = GameSettings.ADDITIONAL_ACTION_GROUPS ? v.GroupOverride : 0;
-			return GetGroupState(v.rootPart, set, group);
+			return GetGroupState(v.rootPart, KrillActivation.ActiveSet(v), group);
 		}
 	}
 }

@@ -6,9 +6,20 @@
     <LangVersion>8.0</LangVersion>
     <AssemblyName>KRILL</AssemblyName>
     <RootNamespace>KRILL</RootNamespace>
-    <Version>0.1.3</Version>
+    <Version>0.2.0</Version>
     <DebugType>none</DebugType>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <!-- Console (flight button grid) is work in progress and NOT part of a release
+       build (2026-09-02). A plain `dotnet build` leaves it out entirely: the
+       KSPAddon and the toolbar right-click that shows it are both compiled only
+       when KRILL_CONSOLE_PREVIEW is defined. To work on it locally:
+           dotnet build -c Release -p:KrillConsolePreview=true
+       and copy the placeholder textures from dev/console_templates/ into
+       GameData/KRILL/Textures/Console/Apollo/ (see CLAUDE.md). -->
+  <PropertyGroup Condition="'$(KrillConsolePreview)' == 'true'">
+    <DefineConstants>$(DefineConstants);KRILL_CONSOLE_PREVIEW</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

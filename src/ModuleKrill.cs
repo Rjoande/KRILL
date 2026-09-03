@@ -44,9 +44,11 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Group on/off state (design doc §5: by convention read/written on the
-		/// vessel ROOT part only — callers, i.e. KrillInputManager, are responsible
-		/// for calling FindModuleImplementing on vessel.rootPart before using these).
+		/// Direction bit — which of Activate/Deactivate the next Fire sends
+		/// (design doc §5: by convention read/written on the vessel ROOT part
+		/// only — callers are responsible for calling FindModuleImplementing on
+		/// vessel.rootPart before using these). Private bookkeeping, not a state
+		/// reading: see KrillGroupToggle.
 		/// </summary>
 		public bool GetToggleState(int set, int group)
 		{
@@ -56,6 +58,23 @@ namespace KRILL
 		public void SetToggleState(int set, int group, bool active)
 		{
 			Data.SetToggle(set, group, active);
+			MarkDirty();
+		}
+
+		/// <summary>
+		/// Persisted signal of a Toggle-kind group (2026-09-02) — the 0/1 readers
+		/// see for that kind, flipped by KrillActivation.Fire and forced by the
+		/// window's State button. Independent of the direction bit above. Same
+		/// root-part convention.
+		/// </summary>
+		public bool GetToggleSignal(int set, int group)
+		{
+			return Data.GetSignal(set, group);
+		}
+
+		public void SetToggleSignal(int set, int group, bool value)
+		{
+			Data.SetSignal(set, group, value);
 			MarkDirty();
 		}
 
@@ -72,6 +91,22 @@ namespace KRILL
 		public void SetActuationKind(int set, int group, KrillActuationKind kind)
 		{
 			Data.SetKind(set, group, kind);
+			MarkDirty();
+		}
+
+		/// <summary>
+		/// Console severity label (2026-08-24 design discussion, "console" name settled 2026-08-27) — purely cosmetic, no
+		/// effect on activation. Same root-part convention as the other per-group
+		/// labels; unlike actuation kind, valid on stock groups (1..10) too.
+		/// </summary>
+		public KrillIndicatorType GetIndicatorType(int set, int group)
+		{
+			return Data.GetIndicatorType(set, group);
+		}
+
+		public void SetIndicatorType(int set, int group, KrillIndicatorType type)
+		{
+			Data.SetIndicatorType(set, group, type);
 			MarkDirty();
 		}
 
