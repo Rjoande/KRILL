@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.3.0
+
+### Added
+
+- **Extended axis groups (A5 and up)**: virtual controller axes on top of stock's four custom axes, assignable per craft and per override set like extended groups. Visible cap 5-40 in the difficulty settings (default 12).
+    - **Per-field options** are the same three stock has: Normal/Inverted, Absolute/Incremental, and a 20-300 %/s speed step for incremental fields.
+    - **Two axis kinds per set**: **Spring** (returns to a rest of -1, 0 or +1 when released) and **Fixed** (keeps its value, saved with the craft). A footer slider shows the live level and can be dragged by hand when no channel is bound.
+- **Stock custom axes 1-4 as rows A1-A4**: rename, capture their channel (stock's own inversion/sensitivity/dead zone are left alone), live value, stock +/- keys shown.
+- **Analog read API for other mods**: `KrillQuery.GetAxisState(vessel, axis)` returns the current level (-1..1) of any axis, stock 1-4 included.
+- **`Delete` during any capture removes the bind** (group keys, set-jump keys, axes); Delete itself is never capturable.
+- **The window hides behind the pause menu (Esc) and with F2**, cancelling a part pick in progress.
+
+### Changed
+
+- **Group and axis names no longer inherit from the Default set**: each set has its own name or the placeholder. Names already saved in the Default set are kept and shown there only.
+
+### Fixed
+
+- Clicking a crew hatch while picking a part in flight opened the crew/EVA popup.
+- A long key or axis description overflowed the window and squeezed the footer buttons; it is now clipped, and conflicts are shown in orange at the start of the line.
+
 ## v0.2.0
 
 - **Console indicator type**: a per-group, per-set footer selector (Info/Caution/Warning) declaring how the future flight console should color a group's cell — cosmetic only for now, no visible effect until the console itself exists. Unlike the actuation-kind selector, available for stock groups 1-10 too, since they'll appear on the console grid alongside extended groups.
