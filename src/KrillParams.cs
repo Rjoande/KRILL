@@ -27,6 +27,30 @@ namespace KRILL
 			minValue = 20, maxValue = 99)]
 		public int maxVisibleGroup = 20;
 
+		// Same pure-UI cap for extended axes (2026-09-07): A1-A4 are the stock
+		// custom axes shown as mirror rows, so the minimum of 5 always leaves at
+		// least one extended axis visible; 12 by default = 8 extended.
+		[GameParameters.CustomIntParameterUI("#LOC_KRILL_settings_maxAxis",
+			toolTip = "#LOC_KRILL_settings_maxAxis_tip",
+			minValue = 5, maxValue = 40)]
+		public int maxVisibleAxis = 12;
+
+		// One dead zone for every extended axis (2026-09-08, user request): the
+		// bindings themselves are stored with deadzone 0 and this is applied at
+		// read time (KrillAxisKeymap.TryRead), so changing it here takes effect on
+		// every axis at once, no recapture. Default = stock's own 0.05.
+		//
+		// Format matters (2026-09-11, found on decompiled DifficultyOptionsMenu):
+		// the slider's set path ROUNDS the raw 0..0.5 value with displayFormat
+		// before storing it, so "N0" stored 0 for every position. A "P" format
+		// takes the other branch (rounds to whole percent, stores the fraction)
+		// and the label formats the fraction as a percentage by itself — so
+		// asPercentage must stay false, or the label would multiply twice.
+		[GameParameters.CustomFloatParameterUI("#LOC_KRILL_settings_axisDeadzone",
+			toolTip = "#LOC_KRILL_settings_axisDeadzone_tip",
+			minValue = 0f, maxValue = 0.5f, stepCount = 51, displayFormat = "P0", asPercentage = false)]
+		public float axisDeadzone = 0.05f;
+
 		public override void SetDifficultyPreset(GameParameters.Preset preset)
 		{
 		}
@@ -55,6 +79,30 @@ namespace KRILL
 					return 20;
 				}
 				return HighLogic.CurrentGame.Parameters.CustomParams<KrillParams>().maxVisibleGroup;
+			}
+		}
+
+		public static int MaxVisibleAxis
+		{
+			get
+			{
+				if (HighLogic.CurrentGame == null)
+				{
+					return 12;
+				}
+				return HighLogic.CurrentGame.Parameters.CustomParams<KrillParams>().maxVisibleAxis;
+			}
+		}
+
+		public static float AxisDeadzone
+		{
+			get
+			{
+				if (HighLogic.CurrentGame == null)
+				{
+					return 0.05f;
+				}
+				return HighLogic.CurrentGame.Parameters.CustomParams<KrillParams>().axisDeadzone;
 			}
 		}
 	}

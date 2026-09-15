@@ -38,14 +38,43 @@ namespace KRILL
 		public void OnDestroy()
 		{
 			KrillCapture.ForceCancel();
+			KrillAxisCapture.ForceCancel();
 			KrillActivation.ReleaseAllHolds();
+			KrillAxisSignal.Clear();
+		}
+
+		/// <summary>Extended-axis engine, physics-rate like stock's own axis groups (see KrillAxisDriver). Paused while an axis capture is open: moving the stick then means "bind me", not "drive the servo".</summary>
+		public void FixedUpdate()
+		{
+			if (KrillAxisCapture.IsCapturing)
+			{
+				return;
+			}
+			Vessel v = FlightGlobals.ActiveVessel;
+			if (v == null || v.rootPart == null || !KrillQuery.ExtendedGroupsUnlockedAnywhere())
+			{
+				return;
+			}
+			ModuleKrill root = v.rootPart.FindModuleImplementing<ModuleKrill>();
+			if (root != null)
+			{
+				KrillAxisDriver.Step(v, root, KrillActivation.ActiveSet(v));
+			}
 		}
 
 		public void Update()
 		{
+			// Return ramps of released Spring axes: real time, every frame.
+			KrillAxisSignal.Tick(Time.unscaledDeltaTime);
+
 			if (KrillCapture.NeedsTick)
 			{
 				KrillCapture.Tick();
+				return;
+			}
+			if (KrillAxisCapture.NeedsTick)
+			{
+				KrillAxisCapture.Tick();
 				return;
 			}
 

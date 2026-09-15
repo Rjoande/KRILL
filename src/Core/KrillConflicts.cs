@@ -79,5 +79,78 @@ namespace KRILL
 			}
 			return hits;
 		}
+
+		/// <summary>
+		/// Axis twin of Describe (2026-09-08, A3): what else already reads the same
+		/// physical channel (an AxisBinding_Single idTag such as "joy0.3"). Checks
+		/// the other KRILL axes, every stock AxisBinding on GameSettings (primary
+		/// and secondary, reflection again — no single list exists) and the four
+		/// stock custom axes, which live in an AxisKeyBindingList rather than as
+		/// AxisBinding fields. Advisory only, like everything here: a channel bound
+		/// twice simply moves both things, exactly as stock lets you do.
+		/// </summary>
+		/// <summary>
+		/// Every OTHER binding already reading the channel `idTag`: KRILL's extended
+		/// axes (skipping `excludeAxis`), every stock AxisBinding field of
+		/// GameSettings, and the four stock custom axes (skipping the slot
+		/// `excludeStockCustom`, 1-4, when the candidate is being written INTO that
+		/// slot by an A1-A4 mirror row — A5, 2026-09-13).
+		/// </summary>
+		public static List<string> DescribeAxis(string idTag, int excludeAxis, int excludeStockCustom = -1)
+		{
+			List<string> hits = new List<string>();
+			if (string.IsNullOrEmpty(idTag) || idTag == "None")
+			{
+				return hits;
+			}
+
+			foreach (KeyValuePair<int, AxisBinding_Single> kv in KrillAxisKeymap.Binds)
+			{
+				if (kv.Key != excludeAxis && kv.Value.idTag == idTag)
+				{
+					hits.Add("KRILL axis " + kv.Key + " (" + kv.Value.title + ")");
+				}
+			}
+
+			foreach (FieldInfo field in typeof(GameSettings).GetFields(BindingFlags.Public | BindingFlags.Static))
+			{
+				if (field.FieldType != typeof(AxisBinding))
+				{
+					continue;
+				}
+				AddAxisHits(hits, (AxisBinding)field.GetValue(null), field.Name, idTag);
+			}
+
+			AxisKeyBindingList custom = GameSettings.AXIS_CUSTOM;
+			if (custom != null)
+			{
+				for (int i = 0; i < custom.Length; i++)
+				{
+					if (i + 1 == excludeStockCustom)
+					{
+						continue;
+					}
+					AxisKeyBinding akb = custom[i];
+					AddAxisHits(hits, akb != null ? akb.axisBinding : null, "AXIS_CUSTOM" + (i + 1), idTag);
+				}
+			}
+			return hits;
+		}
+
+		private static void AddAxisHits(List<string> hits, AxisBinding ab, string label, string idTag)
+		{
+			if (ab == null)
+			{
+				return;
+			}
+			if (ab.primary != null && ab.primary.idTag == idTag)
+			{
+				hits.Add("stock '" + label + "'");
+			}
+			else if (ab.secondary != null && ab.secondary.idTag == idTag)
+			{
+				hits.Add("stock '" + label + "' (secondary)");
+			}
+		}
 	}
 }

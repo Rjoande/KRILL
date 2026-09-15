@@ -67,6 +67,10 @@ namespace KRILL
 		{
 			KeyCode.Mouse0, KeyCode.Mouse1, KeyCode.Mouse2, KeyCode.Mouse3,
 			KeyCode.Mouse4, KeyCode.Mouse5, KeyCode.Mouse6,
+			// 2026-09-09 (user request): Delete during a capture CLEARS the bind
+			// instead — so it can never be captured itself, as primary or modifier,
+			// same rule the axis capture already had.
+			KeyCode.Delete,
 		};
 
 		// While capturing, ANY key press is meant to be consumed by the bind, not
@@ -101,14 +105,17 @@ namespace KRILL
 
 		private static Action<KrillBind> onCaptured;
 		private static Action onCancelled;
+		private static Action onCleared;
 		private static int unlockWaitFramesLeft = -1;
 
-		public static void Begin(Action<KrillBind> captured, Action cancelled)
+		/// <summary>`cleared` (optional) runs when the player presses Delete during the capture: the caller removes the existing bind. Escape still cancels, leaving the bind as it was.</summary>
+		public static void Begin(Action<KrillBind> captured, Action cancelled, Action cleared = null)
 		{
 			IsCapturing = true;
 			unlockWaitFramesLeft = -1;
 			onCaptured = captured;
 			onCancelled = cancelled;
+			onCleared = cleared;
 			InputLockManager.SetControlLock(ControlTypes.ALLBUTCAMERAS, LockId);
 		}
 
@@ -124,6 +131,7 @@ namespace KRILL
 			Action cancelled = onCancelled;
 			onCaptured = null;
 			onCancelled = null;
+			onCleared = null;
 			cancelled?.Invoke();
 		}
 
@@ -139,6 +147,7 @@ namespace KRILL
 			unlockWaitFramesLeft = -1;
 			onCaptured = null;
 			onCancelled = null;
+			onCleared = null;
 			if (wasPending)
 			{
 				InputLockManager.RemoveControlLock(LockId);
@@ -170,6 +179,18 @@ namespace KRILL
 			if (Input.GetKeyDown(KeyCode.Escape))
 			{
 				Cancel();
+				return;
+			}
+			if (Input.GetKeyDown(KeyCode.Delete))
+			{
+				// Not a PauseMenu key: no key-up wait needed, the lock can go now.
+				IsCapturing = false;
+				InputLockManager.RemoveControlLock(LockId);
+				Action cleared = onCleared;
+				onCaptured = null;
+				onCancelled = null;
+				onCleared = null;
+				cleared?.Invoke();
 				return;
 			}
 			for (int i = 0; i < AllKeyCodes.Length; i++)
@@ -204,6 +225,7 @@ namespace KRILL
 				Action<KrillBind> captured = onCaptured;
 				onCaptured = null;
 				onCancelled = null;
+				onCleared = null;
 				captured?.Invoke(bind);
 				return;
 			}

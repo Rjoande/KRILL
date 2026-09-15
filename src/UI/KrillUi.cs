@@ -222,6 +222,68 @@ namespace KRILL.UI
 			}
 		}
 
+		/// <summary>
+		/// Horizontal slider in the shared skin (2026-09-09, for the axis footer):
+		/// inset track, green fill from the left, tan handle. `onChanged` fires on
+		/// every player-driven change (never on SetValueWithoutNotify, which the
+		/// window uses to follow a controller). `onPress`/`onRelease` track the
+		/// mouse on the whole control so a Spring axis can start its return ramp
+		/// when the player lets go — same HoldTracker as HoldButton, same
+		/// self-release on disable.
+		/// </summary>
+		public static Slider Slider(Transform parent, float min, float max, float value, float width, float height,
+			UnityAction<float> onChanged, UnityAction onPress = null, UnityAction onRelease = null, bool readOnly = false)
+		{
+			RectTransform root = Bordered("Slider", parent, Inset, Line);
+			Size(root.gameObject, width, height);
+
+			GameObject fillArea = Go("FillArea", root);
+			RectTransform fillAreaRect = (RectTransform)fillArea.transform;
+			Stretch(fillAreaRect, 2f);
+			// A read-only slider (it follows a controller, the mouse can't move it)
+			// is drawn in the muted greys of the rest of the skin, not just tinted
+			// by Selectable's disabledColor — that only touches the handle and left
+			// the green fill looking live (2026-09-11, A4.11).
+			Image fill = Panel_("Fill", fillArea.transform, readOnly ? Faint : Green);
+			fill.raycastTarget = false;
+			Stretch(fill.rectTransform);
+
+			GameObject handleArea = Go("HandleArea", root);
+			RectTransform handleAreaRect = (RectTransform)handleArea.transform;
+			handleAreaRect.anchorMin = Vector2.zero;
+			handleAreaRect.anchorMax = Vector2.one;
+			handleAreaRect.offsetMin = new Vector2(4f, 1f);
+			handleAreaRect.offsetMax = new Vector2(-4f, -1f);
+			Image handle = Panel_("Handle", handleArea.transform, readOnly ? Muted : Tan);
+			handle.rectTransform.sizeDelta = new Vector2(8f, 0f);
+
+			Slider slider = root.gameObject.AddComponent<Slider>();
+			slider.targetGraphic = handle;
+			slider.fillRect = fill.rectTransform;
+			slider.handleRect = handle.rectTransform;
+			slider.direction = UnityEngine.UI.Slider.Direction.LeftToRight;
+			slider.minValue = min;
+			slider.maxValue = max;
+			slider.wholeNumbers = false;
+			slider.value = value;
+			slider.interactable = !readOnly;
+			ColorBlock colors = slider.colors;
+			colors.normalColor = Color.white;
+			colors.highlightedColor = new Color(1.15f, 1.15f, 1.15f);
+			colors.pressedColor = new Color(0.85f, 0.85f, 0.85f);
+			colors.disabledColor = new Color(0.7f, 0.7f, 0.7f);
+			slider.colors = colors;
+			slider.onValueChanged.AddListener(onChanged);
+
+			if (onPress != null || onRelease != null)
+			{
+				HoldTracker tracker = root.gameObject.AddComponent<HoldTracker>();
+				tracker.onPress = onPress;
+				tracker.onRelease = onRelease;
+			}
+			return slider;
+		}
+
 		public static VerticalLayoutGroup Vertical(GameObject go, int padding, float spacing,
 			bool childForceExpandWidth = true)
 		{
@@ -246,6 +308,22 @@ namespace KRILL.UI
 			group.childControlHeight = true;
 			group.childAlignment = TextAnchor.MiddleLeft;
 			return group;
+		}
+
+		/// <summary>
+		/// Keeps a label inside the rect the layout gives it (in-game report,
+		/// 2026-09-11: a long bind description in the footer ran past the window
+		/// edge). Wrap breaks the line at the rect width and Truncate drops every
+		/// line that does not fit the rect height, so a one-line label shows as
+		/// much as fits and nothing beyond. Pair it with a LayoutElement whose
+		/// preferredWidth is 0 (Size(go, 0f, h, 1f)): a Text reports its FULL
+		/// unwrapped width as preferred, and a HorizontalLayoutGroup would otherwise
+		/// shrink the sibling buttons to make room for it before it even overflowed.
+		/// </summary>
+		public static void ClipText(Text label)
+		{
+			label.horizontalOverflow = HorizontalWrapMode.Wrap;
+			label.verticalOverflow = VerticalWrapMode.Truncate;
 		}
 
 		public static LayoutElement Size(GameObject go, float width = -1f, float height = -1f, float flexibleWidth = -1f)

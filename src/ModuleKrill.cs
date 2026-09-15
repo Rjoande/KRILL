@@ -110,6 +110,55 @@ namespace KRILL
 			MarkDirty();
 		}
 
+		/// <summary>
+		/// Extended-axis settings (2026-09-07, notes/axes-design.md) — kind, rest,
+		/// the persisted level of a Fixed axis, and the silent indicator slot. Same
+		/// root-part convention as every other per-(set, number) label above.
+		/// </summary>
+		public KrillAxisKind GetAxisKind(int set, int axis)
+		{
+			return Data.GetAxisKind(set, axis);
+		}
+
+		public void SetAxisKind(int set, int axis, KrillAxisKind kind)
+		{
+			Data.SetAxisKind(set, axis, kind);
+			MarkDirty();
+		}
+
+		public int GetAxisRest(int set, int axis)
+		{
+			return Data.GetAxisRest(set, axis);
+		}
+
+		public void SetAxisRest(int set, int axis, int rest)
+		{
+			Data.SetAxisRest(set, axis, rest);
+			MarkDirty();
+		}
+
+		public float GetAxisValue(int set, int axis)
+		{
+			return Data.GetAxisValue(set, axis);
+		}
+
+		public void SetAxisValue(int set, int axis, float value)
+		{
+			Data.SetAxisValue(set, axis, value);
+			MarkDirty();
+		}
+
+		public KrillIndicatorType GetAxisIndicatorType(int set, int axis)
+		{
+			return Data.GetAxisIndicatorType(set, axis);
+		}
+
+		public void SetAxisIndicatorType(int set, int axis, KrillIndicatorType type)
+		{
+			Data.SetAxisIndicatorType(set, axis, type);
+			MarkDirty();
+		}
+
 		private void EnsureLoaded()
 		{
 			if (data != null)

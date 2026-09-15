@@ -109,7 +109,30 @@ namespace KRILL
 					}
 				}
 			}
+			return CollapseSymmetry(assigned);
+		}
 
+		/// <summary>Axis twin of GetAssignedParts: distinct parts with at least one axis-field assignment in (set, axis), one row per symmetry group.</summary>
+		public static List<Part> GetAssignedAxisParts(IList<Part> parts, int set, int axis)
+		{
+			List<Part> assigned = new List<Part>();
+			foreach (ModuleKrill m in Modules(parts))
+			{
+				List<KrillAxisAssignment> asg = m.Data.axisAssignments;
+				for (int i = 0; i < asg.Count; i++)
+				{
+					if (asg[i].set == set && asg[i].axis == axis && !assigned.Contains(m.part))
+					{
+						assigned.Add(m.part);
+						break;
+					}
+				}
+			}
+			return CollapseSymmetry(assigned);
+		}
+
+		private static List<Part> CollapseSymmetry(List<Part> assigned)
+		{
 			List<Part> result = new List<Part>();
 			HashSet<Part> covered = new HashSet<Part>();
 			for (int i = 0; i < assigned.Count; i++)
@@ -172,39 +195,142 @@ namespace KRILL
 			return result;
 		}
 
-		/// <summary>First display name found for (set, group), honoring the set-0 inheritance; null if none.</summary>
+		/// <summary>First display name found for exactly (set, group) across the parts; null if none. Names are per set with no inheritance (2026-09-14).</summary>
 		public static string GetGroupName(IList<Part> parts, int set, int group)
 		{
-			string inherited = null;
 			foreach (ModuleKrill m in Modules(parts))
 			{
-				string exact = m.Data.GetName(set, group);
-				if (exact == null)
+				string name = m.Data.GetName(set, group);
+				if (name != null)
 				{
-					continue;
-				}
-				// GetName already applies set-0 inheritance; prefer a module that has
-				// the exact set entry over one that only inherited it.
-				bool isExact = false;
-				List<KrillGroupName> names = m.Data.names;
-				for (int i = 0; i < names.Count; i++)
-				{
-					if (names[i].group == group && names[i].set == set)
-					{
-						isExact = true;
-						break;
-					}
-				}
-				if (isExact)
-				{
-					return exact;
-				}
-				if (inherited == null)
-				{
-					inherited = exact;
+					return name;
 				}
 			}
-			return inherited;
+			return null;
+		}
+
+		/// <summary>Axis twin of GetGroupName, over the separate axis-name list.</summary>
+		public static string GetAxisName(IList<Part> parts, int set, int axis)
+		{
+			foreach (ModuleKrill m in Modules(parts))
+			{
+				string name = m.Data.GetAxisName(set, axis);
+				if (name != null)
+				{
+					return name;
+				}
+			}
+			return null;
+		}
+
+		/// <summary>One axis-field assignment row for the window's column 3: where it lives, the raw assignment (for removal/option edits), and the resolved field if any.</summary>
+		public class AxisFieldEntry
+		{
+			public Part part;
+			public ModuleKrill module;
+			public KrillAxisAssignment assignment;
+			public BaseAxisField resolved;
+		}
+
+		/// <summary>Every axis-field assignment of (set, axis) across the given parts, one per field.</summary>
+		public static List<AxisFieldEntry> GetAxisFieldEntries(IList<Part> parts, int set, int axis)
+		{
+			List<AxisFieldEntry> result = new List<AxisFieldEntry>();
+			foreach (ModuleKrill m in Modules(parts))
+			{
+				List<KrillAxisAssignment> asg = m.Data.axisAssignments;
+				for (int i = 0; i < asg.Count; i++)
+				{
+					if (asg[i].set != set || asg[i].axis != axis)
+					{
+						continue;
+					}
+					result.Add(new AxisFieldEntry
+					{
+						part = m.part,
+						module = m,
+						assignment = asg[i],
+						resolved = asg[i].fieldRef.Resolve(m.part),
+					});
+				}
+			}
+			return result;
+		}
+
+		/// <summary>
+		/// Axis fields a KRILL axis may drive on this part — stock's own eligibility
+		/// rule (KrillFieldRef.IsUsable), iterating each module's Fields list. This
+		/// is the column-2 filter ("can this part take an axis at all?") and the
+		/// column-3 picker source.
+		/// </summary>
+		public static List<BaseAxisField> GetCandidateAxisFields(Part part)
+		{
+			List<BaseAxisField> result = new List<BaseAxisField>();
+			if (part == null)
+			{
+				return result;
+			}
+			foreach (PartModule pm in part.Modules)
+			{
+				for (int i = 0; i < pm.Fields.Count; i++)
+				{
+					BaseAxisField f = pm.Fields[i] as BaseAxisField;
+					if (f != null && KrillFieldRef.IsUsable(f))
+					{
+						result.Add(f);
+					}
+				}
+			}
+			return result;
+		}
+
+		public static bool HasAxisFields(Part part)
+		{
+			return GetCandidateAxisFields(part).Count > 0;
+		}
+
+		/// <summary>
+		/// Read-only view of a STOCK custom axis's (A1-A4) live membership, the axis
+		/// twin of GetStockActions: BaseAxisField.GetAxisGroup(set) is the per-set
+		/// override mask stock itself consults (decompiled 2026-09-07), and like
+		/// BaseAction.GetActionGroup it has no fallback between sets.
+		/// </summary>
+		public static List<BaseAxisField> GetStockAxisFields(IList<Part> parts, int set, KSPAxisGroup group)
+		{
+			List<BaseAxisField> result = new List<BaseAxisField>();
+			if (parts == null)
+			{
+				return result;
+			}
+			for (int i = 0; i < parts.Count; i++)
+			{
+				foreach (PartModule pm in parts[i].Modules)
+				{
+					for (int j = 0; j < pm.Fields.Count; j++)
+					{
+						BaseAxisField f = pm.Fields[j] as BaseAxisField;
+						if (f != null && (f.GetAxisGroup(set) & group) != 0)
+						{
+							result.Add(f);
+						}
+					}
+				}
+			}
+			return result;
+		}
+
+		/// <summary>True if any part carries extended-axis data (any set) — decides whether the window's Axes section starts unfolded.</summary>
+		public static bool AnyAxisData(IList<Part> parts)
+		{
+			foreach (ModuleKrill m in Modules(parts))
+			{
+				KrillPartData d = m.Data;
+				if (d.axisAssignments.Count > 0 || d.axisNames.Count > 0 || d.axisSettings.Count > 0)
+				{
+					return true;
+				}
+			}
+			return false;
 		}
 
 		/// <summary>
@@ -327,6 +453,89 @@ namespace KRILL
 				return null;
 			}
 			return GetGroupState(v.rootPart, KrillActivation.ActiveSet(v), group);
+		}
+
+		/// <summary>
+		/// Everything a reader needs about one extended axis (2026-09-07,
+		/// notes/axes-design.md §3) — the analog twin of GroupState, simpler
+		/// because an axis has no private bookkeeping: `value` IS the level, in
+		/// -1..1, whatever the kind. Consumers (KRAB, the console) read `value`
+		/// and need no kind-specific branch; `kind` and `rest` are there for
+		/// display (the console animates a Spring control back to `rest`).
+		/// The field names are a reflection contract for external mods — don't
+		/// rename them.
+		///
+		/// Storage per kind (A4, mirrors KrillAxisDriver.ResolveLevel): Fixed reads
+		/// its persisted value on the root part (written by the driver from the
+		/// controller, or by the window's slider); Spring reads the runtime level
+		/// in KrillAxisSignal (controller each tick, slider while held, return
+		/// ramp after) and falls back to `rest` when nothing has touched it yet —
+		/// which is also what the editor shows, having no vessel.
+		/// Axes 1-4 (A5, 2026-09-13) are stock's custom axes: `value` is the
+		/// vessel's FlightCtrlState.custom_axes entry (flight only), kind Spring,
+		/// rest 0 — so a consumer can read every axis, stock or extended, alike.
+		/// </summary>
+		public readonly struct AxisState
+		{
+			public readonly KrillAxisKind kind;
+			public readonly int rest;
+			public readonly float value;
+
+			public AxisState(KrillAxisKind kind, int rest, float value)
+			{
+				this.kind = kind;
+				this.rest = rest;
+				this.value = value;
+			}
+		}
+
+		/// <summary>Scene-agnostic form (root part + resolved set), used by the KRILL window. Null if rootPart carries no KRILL module at all, or — for the stock axes 1-4 — outside flight, where there is no control state to read.</summary>
+		public static AxisState? GetAxisState(Part rootPart, int set, int axis)
+		{
+			if (axis < KrillAxes.FirstExtended)
+			{
+				// A5 mirror rows (2026-09-13): A1-A4 ARE stock's custom axes, so the
+				// value is what FlightInputHandler wrote into the vessel's control
+				// state this physics frame (FlightCtrlState.custom_axes, design §8.1)
+				// — the same number stock's AxisGroupsModule applies to the fields.
+				// Flight only: the editor has no control state. Stock has no notion
+				// of kind or rest, so they read as Spring / 0; the set is irrelevant
+				// (one stock axis, one value). Same contract for KRAB's analog read.
+				Vessel v = rootPart != null ? rootPart.vessel : null;
+				float[] custom = v != null && v.ctrlState != null ? v.ctrlState.custom_axes : null;
+				if (custom == null || axis < 1 || axis > custom.Length)
+				{
+					return null;
+				}
+				return new AxisState(KrillAxisKind.Spring, 0, custom[axis - 1]);
+			}
+			ModuleKrill root = rootPart != null ? rootPart.FindModuleImplementing<ModuleKrill>() : null;
+			if (root == null)
+			{
+				return null;
+			}
+			KrillAxisKind kind = root.GetAxisKind(set, axis);
+			int rest = root.GetAxisRest(set, axis);
+			float value;
+			if (kind == KrillAxisKind.Fixed)
+			{
+				value = root.GetAxisValue(set, axis);
+			}
+			else if (!KrillAxisSignal.TryGet(rootPart.vessel, set, axis, out value))
+			{
+				value = rest;
+			}
+			return new AxisState(kind, rest, value);
+		}
+
+		/// <summary>Public read API for other mods: resolves the vessel's active override set and delegates to the overload above.</summary>
+		public static AxisState? GetAxisState(Vessel v, int axis)
+		{
+			if (v == null)
+			{
+				return null;
+			}
+			return GetAxisState(v.rootPart, KrillActivation.ActiveSet(v), axis);
 		}
 	}
 }

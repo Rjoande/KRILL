@@ -6,7 +6,7 @@
     <LangVersion>8.0</LangVersion>
     <AssemblyName>KRILL</AssemblyName>
     <RootNamespace>KRILL</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <DebugType>none</DebugType>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
@@ -20,6 +20,15 @@
        GameData/KRILL/Textures/Console/Apollo/ (see CLAUDE.md). -->
   <PropertyGroup Condition="'$(KrillConsolePreview)' == 'true'">
     <DefineConstants>$(DefineConstants);KRILL_CONSOLE_PREVIEW</DefineConstants>
+  </PropertyGroup>
+
+  <!-- In-game data self-tests (KrillSelfTest.cs: ConfigNode round-trips that
+       need KSP's own ConfigNode, so they can't run outside the game). Compiled
+       only when KRILL_SELFTEST is defined; a release build has no trace of them.
+           dotnet build -c Release -p:KrillSelfTest=true
+       Results go to KSP.log as [KRILL][selftest] lines at main menu (2026-09-07). -->
+  <PropertyGroup Condition="'$(KrillSelfTest)' == 'true'">
+    <DefineConstants>$(DefineConstants);KRILL_SELFTEST</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

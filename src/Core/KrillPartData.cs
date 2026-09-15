@@ -50,8 +50,10 @@ namespace KRILL
 
 	/// <summary>
 	/// A player-facing display name for a group, per set. Names are a KRILL-only
-	/// convenience and, unlike assignments, DO inherit: a name defined in set 0
-	/// applies to all sets until overridden (display-only rule, see design doc §3).
+	/// convenience and, like assignments, are independent per set: a name
+	/// written in set 0 is set 0's only (user decision 2026-09-14, replacing the
+	/// original set-0 inheritance — with it, a set could never "un-inherit" a
+	/// name, clearing the field just brought the set-0 one back).
 	/// Names are allowed for stock groups (1..10) too.
 	/// </summary>
 	public class KrillGroupName
@@ -313,13 +315,20 @@ namespace KRILL
 
 	/// <summary>
 	/// The complete KRILL payload of one part: extended-group assignments for the
-	/// part's own actions, plus (by convention, on the vessel root) group display
-	/// names. Pure data + ConfigNode I/O — no Unity lifecycle, so it can be
-	/// round-tripped and unit-tested (in-game self-test) without a live module.
+	/// part's own actions and extended-axis assignments for its axis fields, plus
+	/// (by convention, on the vessel root) group/axis display names and per-(set,
+	/// group|axis) settings. Pure data + ConfigNode I/O — no Unity lifecycle, so
+	/// it can be round-tripped and unit-tested (in-game self-test) without a live
+	/// module. Axis data (2026-09-07, notes/axes-design.md) lives in its own
+	/// three lists beside the group ones: same tolerant I/O, same root-part
+	/// convention, never mixed with stock's AXISGROUPS node.
 	/// </summary>
 	public class KrillPartData
 	{
 		public const string BackupNodeName = "KRILL_DATA";
+
+		/// <summary>Axis display names reuse KrillGroupName (same shape: set, number, name — independent per set, like group names) under a distinct node name so the two numberings never collide.</summary>
+		public const string AxisNameNodeName = "KRILL_AXIS_NAME";
 
 		public readonly List<KrillAssignment> assignments = new List<KrillAssignment>();
 		public readonly List<KrillGroupName> names = new List<KrillGroupName>();
@@ -327,9 +336,13 @@ namespace KRILL
 		public readonly List<KrillGroupKind> kinds = new List<KrillGroupKind>();
 		public readonly List<KrillGroupIndicator> indicators = new List<KrillGroupIndicator>();
 		public readonly List<KrillGroupSignal> signals = new List<KrillGroupSignal>();
+		public readonly List<KrillAxisAssignment> axisAssignments = new List<KrillAxisAssignment>();
+		public readonly List<KrillGroupName> axisNames = new List<KrillGroupName>();
+		public readonly List<KrillAxisSetting> axisSettings = new List<KrillAxisSetting>();
 
 		public bool IsEmpty => assignments.Count == 0 && names.Count == 0 && toggles.Count == 0 && kinds.Count == 0
-			&& indicators.Count == 0 && signals.Count == 0;
+			&& indicators.Count == 0 && signals.Count == 0
+			&& axisAssignments.Count == 0 && axisNames.Count == 0 && axisSettings.Count == 0;
 
 		public void Clear()
 		{
@@ -339,6 +352,9 @@ namespace KRILL
 			kinds.Clear();
 			indicators.Clear();
 			signals.Clear();
+			axisAssignments.Clear();
+			axisNames.Clear();
+			axisSettings.Clear();
 		}
 
 		/// <summary>Write payload into the module's persistence node (additive; caller owns the node).</summary>
@@ -367,6 +383,18 @@ namespace KRILL
 			for (int i = 0; i < signals.Count; i++)
 			{
 				signals[i].Save(node.AddNode(KrillGroupSignal.NodeName));
+			}
+			for (int i = 0; i < axisAssignments.Count; i++)
+			{
+				axisAssignments[i].Save(node.AddNode(KrillAxisAssignment.NodeName));
+			}
+			for (int i = 0; i < axisNames.Count; i++)
+			{
+				axisNames[i].Save(node.AddNode(AxisNameNodeName));
+			}
+			for (int i = 0; i < axisSettings.Count; i++)
+			{
+				axisSettings[i].Save(node.AddNode(KrillAxisSetting.NodeName));
 			}
 		}
 
@@ -426,6 +454,33 @@ namespace KRILL
 				if (s != null)
 				{
 					signals.Add(s);
+				}
+			}
+			ConfigNode[] axisAsgNodes = node.GetNodes(KrillAxisAssignment.NodeName);
+			for (int i = 0; i < axisAsgNodes.Length; i++)
+			{
+				KrillAxisAssignment a = KrillAxisAssignment.Load(axisAsgNodes[i]);
+				if (a != null)
+				{
+					axisAssignments.Add(a);
+				}
+			}
+			ConfigNode[] axisNameNodes = node.GetNodes(AxisNameNodeName);
+			for (int i = 0; i < axisNameNodes.Length; i++)
+			{
+				KrillGroupName n = KrillGroupName.Load(axisNameNodes[i]);
+				if (n != null)
+				{
+					axisNames.Add(n);
+				}
+			}
+			ConfigNode[] axisSettingNodes = node.GetNodes(KrillAxisSetting.NodeName);
+			for (int i = 0; i < axisSettingNodes.Length; i++)
+			{
+				KrillAxisSetting s = KrillAxisSetting.Load(axisSettingNodes[i]);
+				if (s != null)
+				{
+					axisSettings.Add(s);
 				}
 			}
 		}
@@ -524,47 +579,59 @@ namespace KRILL
 
 		public void SetName(int set, int group, string name)
 		{
-			for (int i = 0; i < names.Count; i++)
+			SetNameIn(names, set, group, name);
+		}
+
+		/// <summary>Display name for exactly (set, group); null if none (no inheritance between sets since 2026-09-14).</summary>
+		public string GetName(int set, int group)
+		{
+			return GetNameIn(names, set, group);
+		}
+
+		/// <summary>Axis display name — same storage class and same per-set independence as group names, separate list (axes and groups are numbered independently).</summary>
+		public string GetAxisName(int set, int axis)
+		{
+			return GetNameIn(axisNames, set, axis);
+		}
+
+		public void SetAxisName(int set, int axis, string name)
+		{
+			SetNameIn(axisNames, set, axis, name);
+		}
+
+		private static void SetNameIn(List<KrillGroupName> list, int set, int number, string name)
+		{
+			for (int i = 0; i < list.Count; i++)
 			{
-				if (names[i].set == set && names[i].group == group)
+				if (list[i].set == set && list[i].group == number)
 				{
 					if (string.IsNullOrEmpty(name))
 					{
-						names.RemoveAt(i);
+						list.RemoveAt(i);
 					}
 					else
 					{
-						names[i].name = name;
+						list[i].name = name;
 					}
 					return;
 				}
 			}
 			if (!string.IsNullOrEmpty(name))
 			{
-				names.Add(new KrillGroupName { set = set, group = group, name = name });
+				list.Add(new KrillGroupName { set = set, group = number, name = name });
 			}
 		}
 
-		/// <summary>Display name for (set, group) with the set-0 inheritance rule; null if none.</summary>
-		public string GetName(int set, int group)
+		private static string GetNameIn(List<KrillGroupName> list, int set, int number)
 		{
-			string fromDefault = null;
-			for (int i = 0; i < names.Count; i++)
+			for (int i = 0; i < list.Count; i++)
 			{
-				if (names[i].group != group)
+				if (list[i].group == number && list[i].set == set)
 				{
-					continue;
-				}
-				if (names[i].set == set)
-				{
-					return names[i].name;
-				}
-				if (names[i].set == 0)
-				{
-					fromDefault = names[i].name;
+					return list[i].name;
 				}
 			}
-			return fromDefault;
+			return null;
 		}
 
 		/// <summary>Direction bit of (set, group) — private bookkeeping, see KrillGroupToggle; false if never fired.</summary>
@@ -669,6 +736,128 @@ namespace KRILL
 				}
 			}
 			indicators.Add(new KrillGroupIndicator { set = set, group = group, type = type });
+		}
+
+		// ---- Extended axes (2026-09-07, notes/axes-design.md A1). Same shapes as
+		// the group helpers above: assignments per part, everything else by
+		// convention on the root part; per-set, no inheritance (names included
+		// since 2026-09-14).
+
+		public KrillAxisAssignment FindAxisAssignment(int set, int axis, KrillFieldRef fieldRef)
+		{
+			for (int i = 0; i < axisAssignments.Count; i++)
+			{
+				KrillAxisAssignment a = axisAssignments[i];
+				if (a.set == set && a.axis == axis && a.fieldRef.SameField(fieldRef))
+				{
+					return a;
+				}
+			}
+			return null;
+		}
+
+		/// <summary>Adds a field to (set, axis) with the given options if not already there; returns the live entry either way (so a symmetric fan-out can copy options from the representative).</summary>
+		public KrillAxisAssignment AddAxisAssignment(int set, int axis, KrillFieldRef fieldRef, bool inverted, bool incremental, float speed)
+		{
+			KrillAxisAssignment existing = FindAxisAssignment(set, axis, fieldRef);
+			if (existing != null)
+			{
+				return existing;
+			}
+			KrillAxisAssignment a = new KrillAxisAssignment
+			{
+				set = set, axis = axis, fieldRef = fieldRef,
+				inverted = inverted, incremental = incremental, speed = speed > 0f ? speed : KrillAxes.DefaultSpeed,
+			};
+			axisAssignments.Add(a);
+			return a;
+		}
+
+		/// <summary>Removes assignment(s) matching these VALUES — by value, not reference, for the same symmetry-sibling reason as RemoveAssignmentMatching. Returns true if anything was removed.</summary>
+		public bool RemoveAxisAssignmentMatching(int set, int axis, KrillFieldRef fieldRef)
+		{
+			return axisAssignments.RemoveAll(a => a.set == set && a.axis == axis && a.fieldRef != null && a.fieldRef.SameField(fieldRef)) > 0;
+		}
+
+		/// <summary>Strips assignments/name/setting for one (set, axis) on THIS part only — single-set scope, same rule as RemoveGroupInSet; never touches the global axis keymap. Returns true if anything changed.</summary>
+		public bool RemoveAxisInSet(int set, int axis)
+		{
+			int removed = axisAssignments.RemoveAll(a => a.set == set && a.axis == axis);
+			removed += axisNames.RemoveAll(n => n.set == set && n.group == axis);
+			removed += axisSettings.RemoveAll(s => s.set == set && s.axis == axis);
+			return removed > 0;
+		}
+
+		/// <summary>The (set, axis) setting record, or null if none was ever written (all defaults apply).</summary>
+		public KrillAxisSetting FindAxisSetting(int set, int axis)
+		{
+			for (int i = 0; i < axisSettings.Count; i++)
+			{
+				if (axisSettings[i].set == set && axisSettings[i].axis == axis)
+				{
+					return axisSettings[i];
+				}
+			}
+			return null;
+		}
+
+		/// <summary>The (set, axis) setting record, created with defaults if absent — for writers.</summary>
+		public KrillAxisSetting EnsureAxisSetting(int set, int axis)
+		{
+			KrillAxisSetting s = FindAxisSetting(set, axis);
+			if (s == null)
+			{
+				s = new KrillAxisSetting { set = set, axis = axis };
+				axisSettings.Add(s);
+			}
+			return s;
+		}
+
+		public KrillAxisKind GetAxisKind(int set, int axis)
+		{
+			KrillAxisSetting s = FindAxisSetting(set, axis);
+			return s != null ? s.kind : KrillAxisKind.Spring;
+		}
+
+		public void SetAxisKind(int set, int axis, KrillAxisKind kind)
+		{
+			EnsureAxisSetting(set, axis).kind = kind;
+		}
+
+		/// <summary>Rest value of a Spring axis (-1, 0 or +1); 0 if never set. Meaningless for Fixed.</summary>
+		public int GetAxisRest(int set, int axis)
+		{
+			KrillAxisSetting s = FindAxisSetting(set, axis);
+			return s != null ? s.rest : 0;
+		}
+
+		public void SetAxisRest(int set, int axis, int rest)
+		{
+			EnsureAxisSetting(set, axis).rest = Mathf.Clamp(rest, KrillAxes.RestMin, KrillAxes.RestMax);
+		}
+
+		/// <summary>Persisted level of a Fixed axis in -1..1; 0 if never set. Meaningless for Spring (see KrillAxisSetting).</summary>
+		public float GetAxisValue(int set, int axis)
+		{
+			KrillAxisSetting s = FindAxisSetting(set, axis);
+			return s != null ? s.value : 0f;
+		}
+
+		public void SetAxisValue(int set, int axis, float value)
+		{
+			EnsureAxisSetting(set, axis).value = Mathf.Clamp(value, -1f, 1f);
+		}
+
+		/// <summary>Silent slot (no UI, no consumer yet); Info if never set.</summary>
+		public KrillIndicatorType GetAxisIndicatorType(int set, int axis)
+		{
+			KrillAxisSetting s = FindAxisSetting(set, axis);
+			return s != null ? s.indicator : KrillIndicatorType.Info;
+		}
+
+		public void SetAxisIndicatorType(int set, int axis, KrillIndicatorType type)
+		{
+			EnsureAxisSetting(set, axis).indicator = type;
 		}
 	}
 }
