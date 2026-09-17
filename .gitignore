@@ -10,9 +10,19 @@ src/.vs/
 notes/
 CLAUDE.md
 input-limitations.md
+KRILL_design_doc.md
+README_release.md
 
 # Pre-3-column-redesign UI, kept only as a local rollback safety net.
 dev/archive-ui-m3v1/
+
+# Console art reference/working material (photos, .ai/.psd templates) — not
+# part of the shipped mod, kept local only while the console is WIP.
+dev/console_reference/
+dev/console_templates/
+
+# Release packages: built by hand by the maintainer, not committed.
+KRILL_*.zip
 
 # Texture working files: only the exported .png ships with the mod.
 GameData/KRILL/Textures/*.psd

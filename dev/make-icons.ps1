@@ -1,5 +1,5 @@
 # Generates KRILL's toolbar icons (38x38 stock, 24x24 Blizzy) into ..\Textures.
-# Ported from AGSetHUD's dev\make-icons.ps1 (same technique, System.Drawing).
+# System.Drawing, generated procedurally (no external image assets needed).
 Add-Type -AssemblyName System.Drawing
 
 function New-KrillIcon([int]$size, [string]$outPath) {
