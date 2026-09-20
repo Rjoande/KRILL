@@ -816,7 +816,7 @@ namespace KRILL
 		public KrillAxisKind GetAxisKind(int set, int axis)
 		{
 			KrillAxisSetting s = FindAxisSetting(set, axis);
-			return s != null ? s.kind : KrillAxisKind.Spring;
+			return s != null ? s.kind : KrillAxes.DefaultKind;
 		}
 
 		public void SetAxisKind(int set, int axis, KrillAxisKind kind)

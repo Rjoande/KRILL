@@ -431,7 +431,7 @@ namespace KRILL.UI
 		private class TypingLock : MonoBehaviour, UnityEngine.EventSystems.ISelectHandler,
 			UnityEngine.EventSystems.IDeselectHandler
 		{
-			public const string LockId = "KRILL_EDITOR_TYPING";
+			public const string LockId = KrillLocks.TypingLockId;
 
 			public void OnSelect(UnityEngine.EventSystems.BaseEventData eventData)
 			{

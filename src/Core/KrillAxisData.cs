@@ -37,6 +37,14 @@ namespace KRILL
 		public const int RestMax = 1;
 
 		/// <summary>
+		/// Kind of an axis nobody has touched yet (user decision 2026-09-19): Fixed,
+		/// because the footer's four-state cycle is Fixed -> Spring 0 -> Spring -1 ->
+		/// Spring +1, so from Fixed any Spring is one click away while from Spring 0
+		/// reaching Fixed took three. Applies wherever no KRILL_AXIS record exists.
+		/// </summary>
+		public const KrillAxisKind DefaultKind = KrillAxisKind.Fixed;
+
+		/// <summary>
 		/// Incremental-mode speed steps offered by the KRILL window, as a fraction
 		/// of the field's full range per second — a hand-picked subset of stock's
 		/// 18-value AXIS_INCREMENTAL_SPEED_MULTIPLIER_STORAGE list (user decision
@@ -287,7 +295,7 @@ namespace KRILL
 
 		public int set;
 		public int axis;
-		public KrillAxisKind kind = KrillAxisKind.Spring;
+		public KrillAxisKind kind = KrillAxes.DefaultKind;
 		public int rest;
 		public float value;
 		public KrillIndicatorType indicator = KrillIndicatorType.Info;
@@ -315,7 +323,7 @@ namespace KRILL
 			string kindStr = null;
 			if (!node.TryGetValue("kind", ref kindStr) || !System.Enum.TryParse(kindStr, out s.kind))
 			{
-				s.kind = KrillAxisKind.Spring;
+				s.kind = KrillAxes.DefaultKind;
 			}
 			node.TryGetValue("rest", ref s.rest);
 			s.rest = Mathf.Clamp(s.rest, KrillAxes.RestMin, KrillAxes.RestMax);

@@ -14,12 +14,16 @@ namespace KRILL
 	///            RETURNS to the axis's rest value over a short real-time ramp
 	///            (Tick), the one place where the Spring kind is functional
 	///            rather than a reminder (§2: with a physical stick, the
-	///            hardware itself springs back).
+	///            hardware itself springs back). Since K1 (2026-09-18, §11) a
+	///            held +/- key drives it the same way: a ramp toward ±1 at the
+	///            attack speed from the settings (infinite = stock's snap).
 	///   Fixed  - not here: its level is the PERSISTED value on the vessel root
 	///            (KrillAxisSetting.value), because it must survive save/load.
 	///
-	/// Never persisted, dies with the flight scene (KrillInputManager.OnDestroy
-	/// -> Clear): a quicksave mid-deflection must not come back as a stuck axis.
+	/// One mechanism for both directions: an entry ramps toward `target` at
+	/// `speed` full-scale units per REAL second until it gets there. Never
+	/// persisted, dies with the flight scene (KrillInputManager.OnDestroy ->
+	/// Clear): a quicksave mid-deflection must not come back as a stuck axis.
 	/// </summary>
 	public static class KrillAxisSignal
 	{
@@ -51,8 +55,9 @@ namespace KRILL
 		private class Entry
 		{
 			public float value;
-			public bool returning;
+			public bool ramping;
 			public float target;
+			public float speed;
 		}
 
 		private static readonly Dictionary<AxisKey, Entry> entries = new Dictionary<AxisKey, Entry>();
@@ -69,31 +74,61 @@ namespace KRILL
 			return true;
 		}
 
-		/// <summary>Sets the live level and stops any return ramp — the controller each tick, or the slider while held.</summary>
+		private static Entry GetOrAdd(AxisKey key)
+		{
+			if (!entries.TryGetValue(key, out Entry e))
+			{
+				e = new Entry();
+				entries[key] = e;
+			}
+			return e;
+		}
+
+		/// <summary>Sets the live level and stops any ramp — the controller each tick, or the slider while held.</summary>
 		public static void SetLive(Vessel v, int set, int axis, float value)
 		{
 			if (!TryKey(v, set, axis, out AxisKey key))
 			{
 				return;
 			}
-			if (!entries.TryGetValue(key, out Entry e))
-			{
-				e = new Entry();
-				entries[key] = e;
-			}
+			Entry e = GetOrAdd(key);
 			e.value = Mathf.Clamp(value, -1f, 1f);
-			e.returning = false;
+			e.ramping = false;
 		}
 
-		/// <summary>Starts the return ramp toward `rest` (slider let go on an unbound Spring axis).</summary>
-		public static void Release(Vessel v, int set, int axis, float rest)
+		/// <summary>
+		/// Starts (or retargets) a ramp toward `target` at `speed` full-scale
+		/// units per real second; PositiveInfinity lands immediately. A held +/-
+		/// key calls this every tick with ±1 — retargeting an already-running
+		/// ramp to the same target is a no-op, so nothing jitters.
+		/// </summary>
+		public static void SetTarget(Vessel v, int set, int axis, float target, float speed)
 		{
-			if (!TryKey(v, set, axis, out AxisKey key) || !entries.TryGetValue(key, out Entry e))
+			if (!TryKey(v, set, axis, out AxisKey key))
 			{
 				return;
 			}
-			e.returning = true;
-			e.target = Mathf.Clamp(rest, -1f, 1f);
+			Entry e = GetOrAdd(key);
+			target = Mathf.Clamp(target, -1f, 1f);
+			if (float.IsInfinity(speed) || speed <= 0f)
+			{
+				e.value = target;
+				e.ramping = false;
+				return;
+			}
+			e.target = target;
+			e.speed = speed;
+			e.ramping = !Mathf.Approximately(e.value, target);
+		}
+
+		/// <summary>Starts the return ramp toward `rest` (slider let go on an unbound Spring axis, +/- key released with no channel to fall back on).</summary>
+		public static void Release(Vessel v, int set, int axis, float rest)
+		{
+			if (!TryKey(v, set, axis, out AxisKey key) || !entries.ContainsKey(key))
+			{
+				return;
+			}
+			SetTarget(v, set, axis, rest, ReturnSpeed);
 		}
 
 		public static bool TryGet(Vessel v, int set, int axis, out float value)
@@ -107,26 +142,25 @@ namespace KRILL
 			return true;
 		}
 
-		/// <summary>Advances every return ramp; call once per frame with Time.unscaledDeltaTime.</summary>
+		/// <summary>Advances every ramp; call once per frame with Time.unscaledDeltaTime.</summary>
 		public static void Tick(float unscaledDeltaTime)
 		{
 			if (entries.Count == 0 || unscaledDeltaTime <= 0f)
 			{
 				return;
 			}
-			float step = ReturnSpeed * unscaledDeltaTime;
 			foreach (KeyValuePair<AxisKey, Entry> kv in entries)
 			{
 				Entry e = kv.Value;
-				if (!e.returning)
+				if (!e.ramping)
 				{
 					continue;
 				}
-				e.value = Mathf.MoveTowards(e.value, e.target, step);
+				e.value = Mathf.MoveTowards(e.value, e.target, e.speed * unscaledDeltaTime);
 				if (Mathf.Approximately(e.value, e.target))
 				{
 					e.value = e.target;
-					e.returning = false;
+					e.ramping = false;
 				}
 			}
 		}

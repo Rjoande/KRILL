@@ -44,20 +44,34 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// True while the primary is currently held — no edge, no modifier check
-		/// (Hold-kind groups only, 2026-08-19). Deliberately a level check, not a
-		/// GetKeyDown/GetKeyUp edge pair: KrillInputManager compares this every
-		/// frame against whether the Key source is currently recorded for the
-		/// group (KrillSignal.HasSource) and turns the difference into a
-		/// HoldPress/HoldRelease edge, so a missed key-up (losing OS focus
-		/// mid-hold, switching active vessel mid-hold) is noticed and released on
-		/// the next frame instead of leaving the group stuck. Mirrors stock's own
-		/// BRAKES handling (FlightInputHandler.cs, verified on decompiled source)
-		/// with that one self-healing addition.
+		/// True while the primary AND every modifier are currently held — a
+		/// level check, no edge (Hold-kind groups since 2026-08-19, axis +/- keys
+		/// since K0). Deliberately not a GetKeyDown/GetKeyUp edge pair:
+		/// KrillInputManager compares this every frame against whether the Key
+		/// source is currently recorded for the group (KrillSignal.HasSource) and
+		/// turns the difference into a HoldPress/HoldRelease edge, so a missed
+		/// key-up (losing OS focus mid-hold, switching active vessel mid-hold) is
+		/// noticed and released on the next frame instead of leaving the group
+		/// stuck. Mirrors stock's own BRAKES handling (FlightInputHandler.cs,
+		/// verified on decompiled source) with that one self-healing addition.
+		/// Modifiers are part of the level (2026-09-18, K0): until then only the
+		/// primary was checked, so a Hold bound to "LeftShift+K" fired on a bare
+		/// K — releasing the modifier first now ends the hold, by design.
 		/// </summary>
-		public bool IsHeld()
+		public bool IsHeldWithModifiers()
 		{
-			return !IsNone && Input.GetKey(primary);
+			if (IsNone || !Input.GetKey(primary))
+			{
+				return false;
+			}
+			for (int i = 0; i < modifiers.Count; i++)
+			{
+				if (!Input.GetKey(modifiers[i]))
+				{
+					return false;
+				}
+			}
+			return true;
 		}
 
 		/// <summary>True if this and other share the same primary key (see Matches doc for why this is the relevant conflict test).</summary>

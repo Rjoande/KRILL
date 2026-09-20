@@ -51,6 +51,25 @@ namespace KRILL
 			minValue = 0f, maxValue = 0.5f, stepCount = 51, displayFormat = "P0", asPercentage = false)]
 		public float axisDeadzone = 0.05f;
 
+		// Axis +/- keys (2026-09-18, K1, notes/axes-design.md §11.4). Two global
+		// values, like the dead zone — the kind of the axis decides which one
+		// applies (KrillAxisDriver.KeyLevel):
+		//   Spring: time of a full -1..+1 swing while a key is held, in ms.
+		//           0 = snap to ±1 like stock's own custom-axis keys (default).
+		//   Fixed:  speed of the persisted level while a key is held, in % of
+		//           the full travel per second (50 = ~2 s end to end).
+		// Ints with a step, not floats: the float slider's set path rounds with
+		// displayFormat (see axisDeadzone), ints have no such trap.
+		[GameParameters.CustomIntParameterUI("#LOC_KRILL_settings_axisKeyAttack",
+			toolTip = "#LOC_KRILL_settings_axisKeyAttack_tip",
+			minValue = 0, maxValue = 1000, stepSize = 50)]
+		public int axisKeyAttackMs = 0;
+
+		[GameParameters.CustomIntParameterUI("#LOC_KRILL_settings_axisKeyRate",
+			toolTip = "#LOC_KRILL_settings_axisKeyRate_tip",
+			minValue = 10, maxValue = 300, stepSize = 10)]
+		public int axisKeyRate = 50;
+
 		public override void SetDifficultyPreset(GameParameters.Preset preset)
 		{
 		}
@@ -103,6 +122,32 @@ namespace KRILL
 					return 0.05f;
 				}
 				return HighLogic.CurrentGame.Parameters.CustomParams<KrillParams>().axisDeadzone;
+			}
+		}
+
+		/// <summary>Spring-axis key attack as the duration of a full -1..+1 swing, in seconds; 0 = instant (stock snap).</summary>
+		public static float AxisKeyAttackSeconds
+		{
+			get
+			{
+				if (HighLogic.CurrentGame == null)
+				{
+					return 0f;
+				}
+				return HighLogic.CurrentGame.Parameters.CustomParams<KrillParams>().axisKeyAttackMs / 1000f;
+			}
+		}
+
+		/// <summary>Fixed-axis key speed in full-scale units per second. The setting is a percentage of the FULL -1..+1 travel (2 units): 50 %/s -> 1.0 unit/s, end to end in 2 s.</summary>
+		public static float AxisKeyRate
+		{
+			get
+			{
+				if (HighLogic.CurrentGame == null)
+				{
+					return 1f;
+				}
+				return HighLogic.CurrentGame.Parameters.CustomParams<KrillParams>().axisKeyRate / 100f * 2f;
 			}
 		}
 	}

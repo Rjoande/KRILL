@@ -689,7 +689,7 @@ namespace KRILL.UI
 					name = KrillQuery.GetAxisName(parts, activeSet, i) ?? DefaultAxisName(i),
 					// Stock A1-A4 mirror GameSettings.AXIS_CUSTOM (A5); extended axes
 					// read the KRILL axis keymap (A3).
-					bind = isStock ? StockAxisBindDescribe(i) : KrillAxisKeymap.Describe(i),
+					bind = isStock ? StockAxisBindDescribe(i) : ExtendedAxisBindDescribe(i),
 				});
 			}
 			return list;
@@ -1386,6 +1386,17 @@ namespace KRILL.UI
 			return text;
 		}
 
+		/// <summary>Column-1 / footer text of an extended axis (K2): the channel (or "-") plus its +/- keys when either is set — the mirror rows' wording, so a keys-only axis never shows a bare "-".</summary>
+		private static string ExtendedAxisBindDescribe(int axis)
+		{
+			string text = KrillAxisKeymap.Describe(axis);
+			if (KrillAxisKeys.HasAny(axis))
+			{
+				text = Localizer.Format("#LOC_KRILL_ui_axisStockKeys", text, KrillAxisKeys.Describe(axis, true), KrillAxisKeys.Describe(axis, false));
+			}
+			return text;
+		}
+
 		private static string StockKeyDescribe(KeyBinding kb)
 		{
 			if (kb == null || kb.primary == null || kb.primary.isNone)
@@ -1448,28 +1459,15 @@ namespace KRILL.UI
 
 		private void BuildFooter(IList<Part> parts, GroupEntry? selected)
 		{
-			GameObject footer = KrillUi.Go("Footer", contentHost);
-			KrillUi.Horizontal(footer, 0, 8f);
-			KrillUi.Size(footer, -1f, 26f);
+			GameObject footer = BuildFooterShell(out Transform row);
 
 			if (selected.HasValue)
 			{
 				GroupEntry g = selected.Value;
-				InputField nameField = KrillUi.Field(footer.transform, g.name, 130f, text => SetGroupName(g.number, text));
+				InputField nameField = KrillUi.Field(row, g.name, 130f, text => SetGroupName(g.number, text));
 				KrillUi.Size(nameField.gameObject, 130f, 20f);
 
-				if (HighLogic.LoadedSceneIsFlight && activeSet > 0 && FlightGlobals.ActiveVessel != null)
-				{
-					string setName = FlightGlobals.ActiveVessel.OverrideGroupNames != null
-						&& activeSet <= FlightGlobals.ActiveVessel.OverrideGroupNames.Length
-						? FlightGlobals.ActiveVessel.OverrideGroupNames[activeSet - 1]
-						: null;
-					InputField setField = KrillUi.Field(footer.transform,
-						string.IsNullOrEmpty(setName) ? "" : setName, 100f, SetActiveSetName);
-					KrillUi.Size(setField.gameObject, 100f, 20f);
-				}
-
-				KrillUi.TextButton(footer.transform, Loc("#LOC_KRILL_ui_capture"), () => StartCapture(g.number, g.isStock),
+				KrillUi.TextButton(row, Loc("#LOC_KRILL_ui_capture"), () => StartCapture(g.number, g.isStock),
 					KrillUi.Panel2, KrillUi.TanDim, 11, 55f, 22f);
 
 				// Kind (Pulse/Toggle/Hold) resolved once, extended groups only — feeds
@@ -1491,14 +1489,14 @@ namespace KRILL.UI
 						// button, the console) — mouse-down is a Window-source press,
 						// mouse-up (or the button going away) its release; the engine
 						// actuates on the group's 0->1 / 1->0 edges across all sources.
-						KrillUi.HoldButton(footer.transform, Loc("#LOC_KRILL_ui_trigger"),
+						KrillUi.HoldButton(row, Loc("#LOC_KRILL_ui_trigger"),
 							() => KrillActivation.HoldPress(FlightGlobals.ActiveVessel, g.number, KrillHoldSource.Window),
 							() => KrillActivation.HoldRelease(g.number, KrillHoldSource.Window),
 							KrillUi.Panel2, KrillUi.GreenHi, 11, 50f, 22f);
 					}
 					else
 					{
-						KrillUi.TextButton(footer.transform, Loc("#LOC_KRILL_ui_trigger"), () => Trigger(g.number, g.isStock),
+						KrillUi.TextButton(row, Loc("#LOC_KRILL_ui_trigger"), () => Trigger(g.number, g.isStock),
 							KrillUi.Panel2, KrillUi.GreenHi, 11, 50f, 22f);
 					}
 				}
@@ -1506,7 +1504,7 @@ namespace KRILL.UI
 				if (!g.isStock)
 				{
 					string kindLabel = Loc(KindLocKey(kind));
-					KrillUi.TextButton(footer.transform, kindLabel, () => CycleKind(g.number),
+					KrillUi.TextButton(row, kindLabel, () => CycleKind(g.number),
 						KrillUi.Panel2, KrillUi.TanDim, 11, 65f, 22f);
 
 					// Toggle only: it's the one kind whose signal is a persisted value
@@ -1518,7 +1516,7 @@ namespace KRILL.UI
 						bool state = gs.Value.signal;
 						string stateLabel = Localizer.Format("#LOC_KRILL_ui_stateLabel", state ? "1" : "0");
 						Color stateColor = state ? KrillUi.GreenHi : KrillUi.TanDim;
-						KrillUi.TextButton(footer.transform, stateLabel, () => ForceState(g.number, !state),
+						KrillUi.TextButton(row, stateLabel, () => ForceState(g.number, !state),
 							KrillUi.Panel2, stateColor, 11, 60f, 22f);
 					}
 				}
@@ -1535,7 +1533,7 @@ namespace KRILL.UI
 				KrillIndicatorType indicatorType = mForIndicator != null
 					? mForIndicator.GetIndicatorType(activeSet, g.number)
 					: KrillIndicatorType.Info;
-				KrillUi.TextButton(footer.transform, Loc(IndicatorLocKey(indicatorType)), () => CycleIndicator(g.number),
+				KrillUi.TextButton(row, Loc(IndicatorLocKey(indicatorType)), () => CycleIndicator(g.number),
 					KrillUi.Panel2, KrillUi.TanDim, 11, 65f, 22f);
 
 				string bindInfo = Localizer.Format("#LOC_KRILL_ui_bindInfo", g.number.ToString(), g.bind);
@@ -1544,44 +1542,31 @@ namespace KRILL.UI
 			}
 			else
 			{
-				Text hint = KrillUi.Label(footer.transform, Loc("#LOC_KRILL_ui_hint"), 11, KrillUi.Muted);
+				Text hint = KrillUi.Label(row, Loc("#LOC_KRILL_ui_hint"), 11, KrillUi.Muted);
 				KrillUi.Size(hint.gameObject, -1f, 22f, 1f);
 			}
 		}
 
 		/// <summary>
 		/// Footer in axis mode (2026-09-07, A2): the same slots as the group footer,
-		/// filled per notes/axes-design.md §6 — name, set name, then Kind
-		/// (Spring/Fixed) and Rest (Spring only) for extended axes, and the info line.
+		/// filled per notes/axes-design.md §6 — name, then Kind (Spring/Fixed)
+		/// and Rest (Spring only) for extended axes, and the info line.
 		/// Capture arrives with A3 and the value slider with A4: their slots stay
 		/// empty until then rather than showing controls that do nothing.
 		/// </summary>
 		private void BuildAxisFooter(AxisEntry a)
 		{
-			GameObject footer = KrillUi.Go("Footer", contentHost);
-			KrillUi.Horizontal(footer, 0, 8f);
-			KrillUi.Size(footer, -1f, 26f);
+			GameObject footer = BuildFooterShell(out Transform row);
 
-			InputField nameField = KrillUi.Field(footer.transform, a.name, 130f, text => SetAxisName(a.number, text));
+			InputField nameField = KrillUi.Field(row, a.name, 130f, text => SetAxisName(a.number, text));
 			KrillUi.Size(nameField.gameObject, 130f, 20f);
-
-			if (HighLogic.LoadedSceneIsFlight && activeSet > 0 && FlightGlobals.ActiveVessel != null)
-			{
-				string setName = FlightGlobals.ActiveVessel.OverrideGroupNames != null
-					&& activeSet <= FlightGlobals.ActiveVessel.OverrideGroupNames.Length
-					? FlightGlobals.ActiveVessel.OverrideGroupNames[activeSet - 1]
-					: null;
-				InputField setField = KrillUi.Field(footer.transform,
-					string.IsNullOrEmpty(setName) ? "" : setName, 100f, SetActiveSetName);
-				KrillUi.Size(setField.gameObject, 100f, 20f);
-			}
 
 			string bindInfo = Localizer.Format("#LOC_KRILL_ui_axisInfo", a.number.ToString(), a.bind);
 			// Same slot and look as the group Capture button; the gesture is
 			// "move an axis" instead of "press a key" (KrillAxisCapture). Offered
 			// for the stock mirror rows too (A5): there it writes AXIS_CUSTOM, the
 			// way a stock group's Capture writes its stock KeyBinding.
-			KrillUi.TextButton(footer.transform, Loc("#LOC_KRILL_ui_capture"), () => StartAxisCapture(a.number),
+			KrillUi.TextButton(row, Loc("#LOC_KRILL_ui_capture"), () => StartAxisCapture(a.number),
 				KrillUi.Panel2, KrillUi.TanDim, 11, 55f, 22f);
 
 			List<string> conflicts;
@@ -1596,8 +1581,8 @@ namespace KRILL.UI
 				{
 					float level = stockState.Value.value;
 					axisSliderAxis = a.number;
-					axisValueSlider = KrillUi.Slider(footer.transform, -1f, 1f, level, 100f, 20f, _ => { }, readOnly: true);
-					axisValueLabel = KrillUi.Label(footer.transform, FormatAxisValue(level), 11, KrillUi.Muted, TextAnchor.MiddleCenter);
+					axisValueSlider = KrillUi.Slider(row, -1f, 1f, level, 100f, 20f, _ => { }, readOnly: true);
+					axisValueLabel = KrillUi.Label(row, FormatAxisValue(level), 11, KrillUi.Muted, TextAnchor.MiddleCenter);
 					KrillUi.Size(axisValueLabel.gameObject, 40f, 22f);
 				}
 
@@ -1606,8 +1591,13 @@ namespace KRILL.UI
 			}
 			else
 			{
+				// +/- key slots (K2, §11.6): one KrillCapture each, Delete clears the
+				// slot; lit when set. The stock mirror rows get theirs in K3.
+				BuildAxisKeyButton(row, a.number, true);
+				BuildAxisKeyButton(row, a.number, false);
+
 				KrillQuery.AxisState? st = KrillQuery.GetAxisState(RootPart(), activeSet, a.number);
-				KrillAxisKind kind = st?.kind ?? KrillAxisKind.Spring;
+				KrillAxisKind kind = st?.kind ?? KrillAxes.DefaultKind;
 
 				// Value slider (A4) in the Trigger/State slots: the axis's live level,
 				// writable only when no controller channel is bound (design §4 — a
@@ -1621,42 +1611,72 @@ namespace KRILL.UI
 					int axisNumber = a.number;
 					int rest = st?.rest ?? 0;
 					axisSliderAxis = axisNumber;
-					axisValueSlider = KrillUi.Slider(footer.transform, -1f, 1f, level, 100f, 20f,
+					axisValueSlider = KrillUi.Slider(row, -1f, 1f, level, 100f, 20f,
 						v => OnAxisSliderChanged(axisNumber, kind, v),
 						() => axisSliderHeld = true,
 						() => OnAxisSliderReleased(axisNumber, kind, rest),
 						readOnly: bound);
-					axisValueLabel = KrillUi.Label(footer.transform, FormatAxisValue(level), 11, bound ? KrillUi.Muted : KrillUi.Tan, TextAnchor.MiddleCenter);
+					axisValueLabel = KrillUi.Label(row, FormatAxisValue(level), 11, bound ? KrillUi.Muted : KrillUi.Tan, TextAnchor.MiddleCenter);
 					KrillUi.Size(axisValueLabel.gameObject, 40f, 22f);
 				}
 
-				KrillUi.TextButton(footer.transform, Loc(kind == KrillAxisKind.Fixed ? "#LOC_KRILL_ui_axisKindFixed" : "#LOC_KRILL_ui_axisKindSpring"),
-					() => CycleAxisKind(a.number), KrillUi.Panel2, KrillUi.TanDim, 11, 65f, 22f);
-				if (kind == KrillAxisKind.Spring)
+				// Kind and rest in ONE four-state cycle (K2, §11.6), starting from the
+				// default: Fixed -> Spring 0 -> Spring -1 -> Spring +1 -> Fixed. Rest only
+				// means something for a Spring, so folding it in loses nothing and pays
+				// for the +/- slots.
+				string kindText;
+				if (kind == KrillAxisKind.Fixed)
 				{
-					int rest = st?.rest ?? 0;
-					string restText = rest > 0 ? "+1" : rest.ToString();
-					KrillUi.TextButton(footer.transform, Localizer.Format("#LOC_KRILL_ui_axisRest", restText),
-						() => CycleAxisRest(a.number), KrillUi.Panel2, KrillUi.TanDim, 11, 60f, 22f);
+					kindText = Loc("#LOC_KRILL_ui_axisKindFixed");
 				}
+				else
+				{
+					int springRest = st?.rest ?? 0;
+					kindText = Localizer.Format("#LOC_KRILL_ui_axisKindSpringRest", springRest > 0 ? "+1" : springRest.ToString());
+				}
+				KrillUi.TextButton(row, kindText, () => CycleAxisKindRest(a.number),
+					KrillUi.Panel2, KrillUi.TanDim, 11, 75f, 22f);
 
 				// Persistent conflict advisory on the CURRENT bind, like the group footer.
 				AxisBinding_Single current = KrillAxisKeymap.GetBind(a.number);
 				conflicts = KrillConflicts.DescribeAxis(current != null ? current.idTag : null, a.number);
+				conflicts.AddRange(KrillConflicts.Describe(KrillAxisKeys.Get(a.number, true), -1, -1, a.number, true));
+				conflicts.AddRange(KrillConflicts.Describe(KrillAxisKeys.Get(a.number, false), -1, -1, a.number, false));
 			}
 
 			BuildFooterInfo(footer.transform, bindInfo, conflicts);
 		}
 
 		/// <summary>
-		/// The footer's trailing info label ("Group N — bind: …"), shared by the
-		/// group and axis footers. It gets only the leftover width and is clipped
+		/// The footer's info label ("Group N — bind: …"), shared by the group and
+		/// axis footers. Since 2026-09-19 it has the footer's second row to itself
+		/// (BuildFooterShell); before that it got only the leftover width and was clipped
 		/// (2026-09-11), which had silently hidden the conflict list appended
 		/// after the bind (A5.4 report, 2026-09-14): with conflicts the label now
 		/// turns Warn (orange) and lists them FIRST, so the colour is always
 		/// visible and the detail is readable for as long as it fits. Without
 		/// conflicts it stays the muted bind line it always was.
 		/// </summary>
+		/// <summary>
+		/// Two-row footer (2026-09-19, after the K2 test: one row had become too
+		/// crowded): every control shares the first 26 px row, the bind/conflict
+		/// line (BuildFooterInfo) gets the whole second row, so long bind
+		/// descriptions and conflict lists finally have room. The window's
+		/// ContentSizeFitter absorbs the extra height. The flight-only set-name
+		/// field went away at the same time (user decision): set names belong to
+		/// stock's own UI, exactly as they already did in the editor.
+		/// </summary>
+		private GameObject BuildFooterShell(out Transform controls)
+		{
+			GameObject footer = KrillUi.Go("Footer", contentHost);
+			KrillUi.Vertical(footer, 0, 4f);
+			GameObject rowGo = KrillUi.Go("Controls", footer.transform);
+			KrillUi.Horizontal(rowGo, 0, 8f);
+			KrillUi.Size(rowGo, -1f, 26f);
+			controls = rowGo.transform;
+			return footer;
+		}
+
 		private static void BuildFooterInfo(Transform parent, string bindInfo, List<string> conflicts)
 		{
 			bool warn = conflicts != null && conflicts.Count > 0;
@@ -1664,7 +1684,7 @@ namespace KRILL.UI
 				? Loc("#LOC_KRILL_ui_conflicts") + ": " + string.Join(", ", conflicts) + " — " + bindInfo
 				: bindInfo;
 			Text info = KrillUi.Label(parent, text, 11, warn ? KrillUi.Warn : KrillUi.Muted);
-			KrillUi.Size(info.gameObject, 0f, 22f, 1f);
+			KrillUi.Size(info.gameObject, 0f, 20f, 1f);
 			KrillUi.ClipText(info);
 		}
 
@@ -1780,6 +1800,50 @@ namespace KRILL.UI
 			RebuildContent();
 		}
 
+		// ---------------------------------------------------------- axis +/- keys
+
+		private void BuildAxisKeyButton(Transform parent, int axis, bool plus)
+		{
+			bool set = KrillAxisKeys.Get(axis, plus) != null;
+			KrillUi.TextButton(parent, plus ? "+" : "-", () => StartAxisKeyCapture(axis, plus),
+				KrillUi.Panel2, set ? KrillUi.Tan : KrillUi.TanDim, 11, 22f, 22f);
+		}
+
+		/// <summary>Same gesture and class as a group capture (KrillCapture: key or joystick button, modifiers, Esc, Delete clears the slot) — the two slots are just two more places a KrillBind can live.</summary>
+		private void StartAxisKeyCapture(int axis, bool plus)
+		{
+			pendingRemovePart = false;
+			ScreenMessages.PostScreenMessage(
+				Localizer.Format("#LOC_KRILL_ui_axisKeyCaptureStart", axis.ToString(), plus ? "+" : "-"), 4f, ScreenMessageStyle.UPPER_CENTER);
+			KrillCapture.Begin(
+				bind => OnAxisKeyCaptured(axis, plus, bind),
+				() => ScreenMessages.PostScreenMessage(Loc("#LOC_KRILL_ui_captureCancelled"), 3f, ScreenMessageStyle.UPPER_CENTER),
+				() => OnAxisKeyCleared(axis, plus));
+		}
+
+		private void OnAxisKeyCaptured(int axis, bool plus, KrillBind bind)
+		{
+			string conflictSuffix = "";
+			List<string> conflicts = KrillConflicts.Describe(bind, -1, -1, axis, plus);
+			if (conflicts.Count > 0)
+			{
+				conflictSuffix = " (" + Loc("#LOC_KRILL_ui_conflicts") + ": " + string.Join(", ", conflicts) + ")";
+			}
+			KrillAxisKeys.Set(axis, plus, bind);
+			ScreenMessages.PostScreenMessage(
+				Localizer.Format("#LOC_KRILL_ui_axisKeyCaptureDone", axis.ToString(), plus ? "+" : "-", bind.Describe()) + conflictSuffix,
+				5f, ScreenMessageStyle.UPPER_CENTER);
+			RebuildContent();
+		}
+
+		private void OnAxisKeyCleared(int axis, bool plus)
+		{
+			KrillAxisKeys.Set(axis, plus, null);
+			ScreenMessages.PostScreenMessage(
+				Localizer.Format("#LOC_KRILL_ui_axisKeyCaptureCleared", axis.ToString(), plus ? "+" : "-"), 4f, ScreenMessageStyle.UPPER_CENTER);
+			RebuildContent();
+		}
+
 		private void SetAxisName(int axis, string text)
 		{
 			Part root = RootPart();
@@ -1798,7 +1862,8 @@ namespace KRILL.UI
 			RebuildContent();
 		}
 
-		private void CycleAxisKind(int axis)
+		/// <summary>The footer's four-state kind/rest cycle (K2): Fixed -> Spring 0 -> Spring -1 -> Spring +1 -> Fixed. Entering Spring from Fixed resets the rest to 0 so the cycle always restarts from the same place.</summary>
+		private void CycleAxisKindRest(int axis)
 		{
 			Part root = RootPart();
 			ModuleKrill m = root != null ? root.FindModuleImplementing<ModuleKrill>() : null;
@@ -1806,20 +1871,26 @@ namespace KRILL.UI
 			{
 				return;
 			}
-			KrillAxisKind next = m.GetAxisKind(activeSet, axis) == KrillAxisKind.Spring ? KrillAxisKind.Fixed : KrillAxisKind.Spring;
-			m.SetAxisKind(activeSet, axis, next);
-			RebuildContent();
-		}
-
-		private void CycleAxisRest(int axis)
-		{
-			Part root = RootPart();
-			ModuleKrill m = root != null ? root.FindModuleImplementing<ModuleKrill>() : null;
-			if (m == null)
+			if (m.GetAxisKind(activeSet, axis) == KrillAxisKind.Fixed)
 			{
-				return;
+				m.SetAxisKind(activeSet, axis, KrillAxisKind.Spring);
+				m.SetAxisRest(activeSet, axis, 0);
 			}
-			m.SetAxisRest(activeSet, axis, KrillAxes.NextRest(m.GetAxisRest(activeSet, axis)));
+			else
+			{
+				switch (m.GetAxisRest(activeSet, axis))
+				{
+					case 0:
+						m.SetAxisRest(activeSet, axis, -1);
+						break;
+					case -1:
+						m.SetAxisRest(activeSet, axis, 1);
+						break;
+					default:
+						m.SetAxisKind(activeSet, axis, KrillAxisKind.Fixed);
+						break;
+				}
+			}
 			RebuildContent();
 		}
 
@@ -1839,18 +1910,6 @@ namespace KRILL.UI
 			}
 			m.Data.SetName(activeSet, group, trimmed);
 			m.MarkDirty();
-			RebuildContent();
-		}
-
-		/// <summary>Set-name rename, "symmetric with stock" per the 2026-07-18 decision: writes the SAME field stock persists through ProtoVessel (verified on decompiled ProtoVessel.cs — Save/Load round-trip it, not a KRILL-only shadow name).</summary>
-		private void SetActiveSetName(string text)
-		{
-			Vessel v = FlightGlobals.ActiveVessel;
-			if (v == null || activeSet <= 0 || v.OverrideGroupNames == null || activeSet > v.OverrideGroupNames.Length)
-			{
-				return;
-			}
-			v.OverrideGroupNames[activeSet - 1] = string.IsNullOrEmpty(text) ? null : text.Trim();
 			RebuildContent();
 		}
 

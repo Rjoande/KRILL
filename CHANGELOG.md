@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.3.1
+
+### Added
+
+- **+/- keys for extended axes**: each axis A5+ can have a plus and a minus key (keyboard key or joystick button, with modifiers allowed), like stock's custom axes. What a held key does depends on the axis kind: a **Spring** axis deflects to ±1 and springs back to rest on release, a **Fixed** axis moves at a configurable speed and stays where the key leaves it.
+
+### Changed
+
+- **Footer on two rows**: controls on the first, the bind / conflict line alone on the second.
+- **KSP.log** is more informative, so a "my keys stopped working" has an answer in the log.
+- **Axis footer: Kind and Rest are one button** cycling Fixed -> Spring 0 -> Spring -1 -> Spring +1, which makes room for the two key buttons.
+
+### Fixed
+
+- **Keys no longer fire while typing in a KRILL text field**.
+- **Hold groups now require the whole key combination**: a Hold bound to e.g. `LeftShift+K` used to fire on a bare `K` (only the primary key was checked while held).
+
 ## v0.3.0
 
 ### Added

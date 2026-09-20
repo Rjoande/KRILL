@@ -89,12 +89,18 @@ namespace KRILL
 			// locked save would otherwise re-attempt (and re-post the locked
 			// message) every single frame until released.
 			bool unlocked = KrillQuery.ExtendedGroupsUnlockedAnywhere();
+			// Key polling stops while a KRILL text field has focus or anything
+			// outside KRILL locks the keyboard (2026-09-18, K1 — found while
+			// gating the axis keys: a "k" typed into the name field used to fire
+			// group K). Releases below stay unconditional: a hold that started
+			// before the lock must still end on its key-up.
+			bool keysAllowed = KrillLocks.KeysAllowed();
 
 			foreach (KeyValuePair<int, KrillBind> kv in KrillKeymap.Binds)
 			{
 				int group = kv.Key;
 				KrillBind bind = kv.Value;
-				bool held = bind.IsHeld();
+				bool held = bind.IsHeldWithModifiers();
 
 				// Release first, and regardless of the group's CURRENT kind: the
 				// press was recorded under whatever kind/set was current then, and
@@ -110,12 +116,12 @@ namespace KRILL
 				KrillActuationKind kind = root != null ? root.GetActuationKind(set, group) : KrillActuationKind.Pulse;
 				if (kind == KrillActuationKind.Hold)
 				{
-					if (unlocked && held && !KrillSignal.HasSource(group, KrillHoldSource.Key))
+					if (unlocked && keysAllowed && held && !KrillSignal.HasSource(group, KrillHoldSource.Key))
 					{
 						KrillActivation.HoldPress(v, group, KrillHoldSource.Key);
 					}
 				}
-				else if (bind.Matches())
+				else if (keysAllowed && bind.Matches())
 				{
 					KrillActivation.Fire(v, group);
 				}
@@ -123,7 +129,7 @@ namespace KRILL
 
 			foreach (KeyValuePair<int, KrillBind> kv in KrillSetKeymap.Binds)
 			{
-				if (kv.Value.Matches())
+				if (keysAllowed && kv.Value.Matches())
 				{
 					// SetGroupOverride itself already no-ops if already on this set
 					// (confirmed on decompiled Vessel.cs) — no need to guard here.

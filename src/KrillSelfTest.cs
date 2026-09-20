@@ -113,7 +113,7 @@ namespace KRILL
 			stockAxis.AddValue("axis", 3);
 			stockAxis.AddValue("module", "ModuleEngines");
 			stockAxis.AddValue("field", "thrustPercentage");
-			// Bad speed -> default; unknown kind -> Spring; rest out of range -> clamped; value out of range -> clamped.
+			// Bad speed -> default; unknown kind -> the default kind; rest out of range -> clamped; value out of range -> clamped.
 			ConfigNode badSpeed = root.AddNode(KrillAxisAssignment.NodeName);
 			badSpeed.AddValue("set", 0);
 			badSpeed.AddValue("axis", 9);
@@ -137,7 +137,7 @@ namespace KRILL
 			KrillAxisAssignment slow = d.FindAxisAssignment(0, 9, new KrillFieldRef { module = "ModuleLight", field = "lightR" });
 			Check(slow != null && Mathf.Approximately(slow.speed, KrillAxes.DefaultSpeed), "non-positive speed falls back to default");
 			Check(d.axisSettings.Count == 1, "setting without set dropped, weird one kept (" + d.axisSettings.Count + ")");
-			Check(d.GetAxisKind(0, 9) == KrillAxisKind.Spring, "unknown kind name falls back to Spring");
+			Check(d.GetAxisKind(0, 9) == KrillAxes.DefaultKind, "unknown kind name falls back to the default kind");
 			Check(d.GetAxisRest(0, 9) == KrillAxes.RestMax, "rest clamped to +1");
 			Check(Mathf.Approximately(d.GetAxisValue(0, 9), 1f), "value clamped to 1");
 		}
