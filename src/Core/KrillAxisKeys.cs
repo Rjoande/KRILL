@@ -5,21 +5,9 @@ using UnityEngine;
 namespace KRILL
 {
 	/// <summary>
-	/// The player's global +/- KEYS for extended axes (2026-09-18, K1,
-	/// notes/axes-design.md §11): axis number -> a plus bind and a minus bind,
-	/// each a KrillBind (keyboard key or joystick button, with modifiers) —
-	/// the third "hand" on an axis next to the controller channel
-	/// (KrillAxisKeymap) and the footer slider. Stock gives its custom axes the
-	/// same trio (AxisKeyBinding: axisBinding + plusKeyBinding + minusKeyBinding).
-	///
-	/// Deliberately its own class and file rather than a second field on
-	/// KrillAxisKeymap: there, "an entry exists" means "a channel is bound"
-	/// (IsBound, the driver's refresh loop, the slider's read-only state) and a
-	/// keys-only axis must not look bound. What a held key DOES to the axis is
-	/// the driver's business (KrillAxisDriver: Spring deflects toward ±1 and
-	/// springs back, Fixed integrates and stays); this class only stores and
-	/// polls. Global per player under PluginData/, never per craft, same
-	/// reasoning as keymap.cfg (ModuleManager never scans that folder).
+	/// The player's global +/- KEYS for extended axes: axis number -> a plus and a
+	/// minus KrillBind, the third hand on an axis next to the channel and the
+	/// slider. Own class so that "bound" keeps meaning "has a channel" elsewhere.
 	/// </summary>
 	public static class KrillAxisKeys
 	{
@@ -92,11 +80,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// +1 while the plus key combination is down, -1 for minus, 0 for neither
-		/// or BOTH (two hands pulling opposite ways cancel — design §11.2). A
-		/// level check like stock's ProcessAxis (Input.GetKey, fine from
-		/// FixedUpdate); the caller decides whether keys are allowed at all
-		/// (typing lock, captures — KrillAxisDriver).
+		/// +1 while the plus combination is down, -1 for minus, 0 for neither or BOTH
+		/// (two hands pulling opposite ways cancel). A level check, safe from
+		/// FixedUpdate; whether keys are allowed at all is the caller's call.
 		/// </summary>
 		public static int HeldDirection(int axis)
 		{

@@ -5,15 +5,9 @@ using UnityEngine;
 namespace KRILL
 {
 	/// <summary>
-	/// The player's global keymap: extended group number -> KrillBind. Global and
-	/// per-player (not per-save, not per-craft) by design (§4): the same key always
-	/// triggers the same group number, on any vessel, in any set — the active set
-	/// decides WHAT the group does, never which key triggers it.
-	///
-	/// Persisted under PluginData/, not directly in GameData: ModuleManager never
-	/// scans a "PluginData" folder for patches (a standing KSP-modding convention
-	/// many mods rely on for exactly this reason), so saving the keymap here never
-	/// triggers an MM cache rebuild.
+	/// The player's global keymap: extended group number -> KrillBind. Global, not
+	/// per-craft: the active set decides what a group does, never which key fires
+	/// it. Kept in PluginData/ so saving never triggers a ModuleManager rebuild.
 	/// </summary>
 	public static class KrillKeymap
 	{

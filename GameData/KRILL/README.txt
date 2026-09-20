@@ -40,9 +40,10 @@ What it does
 - A clean on/off signal for other mods: every extended group presents a plain
   on/off level. A Pulse reads on for 750 ms after firing, a Toggle its state,
   a Hold whether it's held right now. Works through a public read API
-  (KrillQuery.GetGroupState), so a mod like KRAB can use a KRILL group as an
-  input without knowing anything about kinds. A per-group Info/Caution/Warning
-  label is also stored for the future flight console.
+  (KrillQuery.GetGroupState), so a mod like KRAB
+  (https://github.com/Rjoande/KRAB) can use a KRILL group as an input without
+  knowing anything about kinds. A per-group Info/Caution/Warning label is also
+  stored for the future flight console.
 - Groups 1-10 stay exactly where you already assign them (the stock Action
   Groups screen): KRILL only adds naming and rebinding for them, it never
   duplicates or replaces that screen.

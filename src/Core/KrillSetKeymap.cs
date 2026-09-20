@@ -5,19 +5,9 @@ using UnityEngine;
 namespace KRILL
 {
 	/// <summary>
-	/// M4: the player's global "jump directly to this set" keymap — set number
-	/// (0 = Default, 1..Vessel.NumOverrideGroups) -> KrillBind. Deliberately a
-	/// SEPARATE dictionary/file from KrillKeymap (extended group -> KrillBind),
-	/// even though both keys are small ints: mixing them would risk a "3" meaning
-	/// group 3 in one context and set 3 in another, exactly the kind of ambiguity
-	/// KrillKeymap.EnsureLoaded already guards against on its own side (it drops
-	/// any entry with group &lt; KrillGroups.FirstExtended).
-	///
-	/// Global and per-player, same reasoning as KrillKeymap (design doc §4): the
-	/// same key always jumps to the same set, on any vessel — activation
-	/// (Vessel.SetGroupOverride) only makes sense in flight (design doc §8,
-	/// confirmed with the user 2026-07-23), but capturing/editing the bind itself
-	/// is scene-agnostic, same as the group keymap's own Capture button.
+	/// The player's global "jump to this set" keymap: set number (0 = Default,
+	/// 1..Vessel.NumOverrideGroups) -> KrillBind. Separate from KrillKeymap so a
+	/// small int can never mean a group in one file and a set in the other.
 	/// </summary>
 	public static class KrillSetKeymap
 	{

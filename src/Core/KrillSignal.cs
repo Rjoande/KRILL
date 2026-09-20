@@ -5,12 +5,9 @@ using UnityEngine;
 namespace KRILL
 {
 	/// <summary>
-	/// Where a Hold-kind press comes from. One record per (group, source): a
-	/// given source can hold a given group once at a time, but several sources
-	/// can hold the same group together — the level is their OR, and no source
-	/// ever has to "win" over another (releasing the mouse while the key is
-	/// still down leaves the group held, exactly as the "held means held"
-	/// contract promises readers).
+	/// Where a Hold-kind press comes from. One record per (group, source): several
+	/// sources can hold the same group together and the level is their OR, so
+	/// releasing the mouse while the key is still down leaves the group held.
 	/// </summary>
 	public enum KrillHoldSource
 	{
@@ -20,45 +17,22 @@ namespace KRILL
 	}
 
 	/// <summary>
-	/// The signal layer (2026-09-02 rework, notes/kind-signal-analysis.md): the
-	/// ONE 0/1 level a (set, group) presents to readers — KRAB, the console, any
-	/// other mod — kept in the storage class each kind's contract demands, and
-	/// written directly by whoever produces it. No reconciliation poller, no
-	/// transient state on disk.
-	///
-	///   Pulse  - runtime expiry timestamp per (vessel, set, group), here.
-	///   Hold   - runtime set of asserted sources per group, here; the level
-	///            is "at least one source is holding it right now".
-	///   Toggle - a PERSISTED bool on the vessel root part (KrillGroupSignal,
-	///            read via ModuleKrill.GetToggleSignal) — not here, because it
-	///            must survive save/load; nothing else in this class may.
-	///
-	/// Everything here dies with the flight scene
-	/// (KrillInputManager.OnDestroy -> KrillActivation.ReleaseAllHolds), which
-	/// is correct by design for Pulse and Hold: both are transient.
-	///
-	/// The previous design kept Hold's level in the persisted direction bit and
-	/// relied on a per-frame poller to reconcile it against the key/UI state —
-	/// that produced the whole family of "stuck at 1" reports (a UI-only group
-	/// left the polled set on release before the poller could see it; a
-	/// quicksave mid-hold came back as a real Deactivate on load; any window
-	/// rebuild mid-press orphaned the release). None of those can exist here:
-	/// the level IS the set of sources, and each source adds/removes itself.
+	/// The signal layer: the one 0/1 level a (set, group) presents to readers,
+	/// written directly by whoever produces it. A Pulse timestamp and the set of
+	/// Hold sources live here, both transient; a Toggle's signal is persisted.
 	/// </summary>
 	public static class KrillSignal
 	{
 		// ------------------------------------------------------------------ pulse
 
 		/// <summary>
-		/// How long a Pulse-kind group reads as 1 after it fires (user decision
-		/// 2026-08-31, reconfirmed 2026-09-02: constant, no slider). Real seconds,
-		/// not game seconds — see StartPulse. A single frame would be technically
-		/// readable but useless: the player can't see it, and it gives the
-		/// console nothing to light a lamp with.
+		/// How long a Pulse-kind group reads as 1 after it fires, in real seconds. A
+		/// single frame would be technically readable but useless: nothing the player
+		/// or the console could ever light a lamp with.
 		/// </summary>
 		public const float PulseSeconds = 0.75f;
 
-		/// <summary>Scopes a live pulse to one (vessel, set, group) so switching vessels or sets mid-pulse can never show a phantom lit lamp on an unrelated craft.</summary>
+		/// <summary>Scopes a pulse to one (vessel, set, group), so switching vessel or set mid-pulse never lights a lamp on an unrelated craft.</summary>
 		private struct PulseKey : IEquatable<PulseKey>
 		{
 			public Guid vessel;
@@ -81,20 +55,13 @@ namespace KRILL
 			}
 		}
 
-		/// <summary>
-		/// Expiry time (Time.unscaledTime) per currently-pulsing group. Runtime
-		/// only, NEVER persisted: a pulse is transient by nature, and a timestamp
-		/// written into a craft file would come back as a stale half-finished
-		/// pulse on load. Dying with the scene is the correct behavior.
-		/// </summary>
+		/// <summary>Expiry time per pulsing group. Never persisted: a timestamp in a craft file would come back as a stale half-finished pulse.</summary>
 		private static readonly Dictionary<PulseKey, float> pulseExpiry = new Dictionary<PulseKey, float>();
 
 		/// <summary>
-		/// Starts (or restarts, if one is already running) the pulse for a group.
-		/// Deliberately unscaled time: Time.time is scaled by Unity's timeScale,
-		/// which KSP drives for physics warp — a 750ms lamp would flash for a
-		/// wildly different wall-clock duration at 4x. An annunciator blinks in
-		/// real seconds regardless of warp.
+		/// Starts, or restarts, the pulse for a group. Unscaled time on purpose:
+		/// Time.time follows physics warp, and an annunciator must blink for the same
+		/// wall-clock 750 ms at 1x and at 4x.
 		/// </summary>
 		internal static void StartPulse(Vessel v, int set, int group)
 		{
@@ -107,7 +74,7 @@ namespace KRILL
 				Time.unscaledTime + PulseSeconds;
 		}
 
-		/// <summary>Keeps the dictionary from growing across a long flight — entries are short-lived by construction, so a sweep whenever a new one starts is enough.</summary>
+		/// <summary>Keeps the dictionary from growing: entries are short-lived, so a sweep whenever a new pulse starts is enough.</summary>
 		private static void PruneExpiredPulses()
 		{
 			if (pulseExpiry.Count == 0)
@@ -133,7 +100,7 @@ namespace KRILL
 			}
 		}
 
-		/// <summary>True while a Pulse-kind group is still within its post-fire window — the level KrillQuery.GroupState.signal reports for that kind.</summary>
+		/// <summary>True while a Pulse-kind group is still within its post-fire window: the level readers see for that kind.</summary>
 		public static bool IsPulsing(Vessel v, int set, int group)
 		{
 			if (v == null)
@@ -173,11 +140,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Where a press STARTED: the vessel and set current at press time. A
-		/// hold releases where it began (user decision 2026-09-02) — switching
-		/// set or active vessel mid-press neither moves it nor leaks it: the
-		/// eventual release sends Deactivate to exactly the (vessel, set, group)
-		/// that received Activate, never to whatever happens to be current then.
+		/// Where a press STARTED. A hold releases where it began, so switching set or
+		/// vessel mid-press sends the eventual Deactivate to the same (vessel, set,
+		/// group) that got the Activate, never to whatever is current by then.
 		/// </summary>
 		public struct HoldRecord
 		{
@@ -188,7 +153,7 @@ namespace KRILL
 
 		private static readonly Dictionary<HoldKey, HoldRecord> holds = new Dictionary<HoldKey, HoldRecord>();
 
-		/// <summary>Is this source currently holding this group? The key poller compares this against the physical key's live state to turn a level into press/release edges (KrillInputManager).</summary>
+		/// <summary>Is this source currently holding this group? The key poller diffs it against the live key state to get press/release edges.</summary>
 		public static bool HasSource(int group, KrillHoldSource source)
 		{
 			return holds.ContainsKey(new HoldKey { group = group, source = source });
@@ -211,7 +176,7 @@ namespace KRILL
 			return false;
 		}
 
-		/// <summary>True while the KRILL window's own Hold button is pressed on ANY group — the window defers its content rebuilds until this is false, so the button being held is never torn down from under the mouse by an unrelated event (see KrillWindow.LateUpdate).</summary>
+		/// <summary>True while the window's Hold button is pressed on any group: it defers rebuilds until then, so the button is never torn down mid-press.</summary>
 		public static bool AnyWindowHeld
 		{
 			get
@@ -227,7 +192,7 @@ namespace KRILL
 			}
 		}
 
-		/// <summary>Records a press. Returns true only if this press turned the (vessel, set, group) level 0 -> 1 — i.e. the caller must send Activate. A repeated press from the same source is ignored.</summary>
+		/// <summary>Records a press. True only when it took the level 0 -> 1, i.e. the caller must send Activate; a repeated press is ignored.</summary>
 		internal static bool AddSource(Vessel v, int set, int group, KrillHoldSource source)
 		{
 			HoldKey key = new HoldKey { group = group, source = source };
@@ -240,7 +205,7 @@ namespace KRILL
 			return !wasHeld;
 		}
 
-		/// <summary>Records a release. Returns true only if this release turned the recorded (vessel, set, group) level 1 -> 0 — i.e. the caller must send Deactivate there. `record` is valid whenever the source was actually holding something (found), even when the level stays 1 because another source still holds it.</summary>
+		/// <summary>Records a release. True only when it took the level 1 -> 0; `record` is valid whenever the source was holding something (found).</summary>
 		internal static bool RemoveSource(int group, KrillHoldSource source, out HoldRecord record, out bool found)
 		{
 			HoldKey key = new HoldKey { group = group, source = source };
@@ -253,7 +218,7 @@ namespace KRILL
 			return !IsHeld(record.vessel, record.set, record.group);
 		}
 
-		/// <summary>Empties every hold record and returns the distinct (vessel, set, group) levels that were 1 — the caller deactivates each of them. Scene teardown only.</summary>
+		/// <summary>Empties every hold record and returns the distinct levels that were 1, for the caller to deactivate. Scene teardown only.</summary>
 		internal static List<HoldRecord> DrainHolds()
 		{
 			List<HoldRecord> levels = new List<HoldRecord>();

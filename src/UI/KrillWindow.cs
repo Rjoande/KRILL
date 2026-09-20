@@ -7,33 +7,9 @@ using UnityEngine.UI;
 namespace KRILL.UI
 {
 	/// <summary>
-	/// The single KRILL window — 3-column Miller-style layout (2026-07-18 redesign,
-	/// replacing M3's flat list + expand-in-place detail view): Action Groups |
-	/// Parts | Actions, mirroring the shape of the data itself (set → group → part
-	/// → action IS the KrillAssignment hierarchy — this is a pure view change,
-	/// Core is untouched).
-	///
-	/// Three INDEPENDENT ScrollLists (2026-07-19 rework — the original single
-	/// shared row grid tied every column to the SAME absolute row index, so that
-	/// once column 1 started listing every group up to the settings cap
-	/// unconditionally, any selected group with more than one assigned part
-	/// pushed its Parts/Actions rows down into whatever OTHER group column 1
-	/// happened to be showing on those same rows — visually pairing unrelated
-	/// data). Real Miller/Finder columns don't share a row grid at all: each
-	/// column is simply its own top-anchored list, sized to its own content, with
-	/// its own scroll position (also fixes the "every click resets scroll to top"
-	/// report — see the save/restore in RebuildContent). Column 2/3 selection is
-	/// still driven by selectedGroup/selectedPart exactly as before; it just no
-	/// longer needs to know WHICH ROW its parent was on.
-	///
-	/// Selection state: selectedGroup drives what's shown in Parts; selectedPart
-	/// (persistent, not just picker-hover — user clarification 2026-07-18) drives
-	/// Actions. A part picked via "+Part" but not yet given an action is TRANSIENT:
-	/// nothing is persisted until "+Action" creates a real KrillAssignment (accepted
-	/// by design — it simply disappears if you close the window first).
-	///
-	/// Shell (canvas, titlebar, drag, hover focus-lock) unchanged from M3's first
-	/// pass — ported from KRAB's KrabEditorWindow.cs in structure.
+	/// The single KRILL window: a 3-column Miller layout (Groups | Parts | Actions)
+	/// mirroring the shape of the data itself. The three lists are INDEPENDENT, so
+	/// no column ever depends on which row its parent sat on.
 	/// </summary>
 	public partial class KrillWindow : MonoBehaviour
 	{
@@ -45,56 +21,42 @@ namespace KRILL.UI
 
 		private static KrillWindow current;
 
-		/// <summary>Set by KrillToolbarApp so the toolbar button un-presses itself when the window closes via its own ✕ instead of the toolbar (which would otherwise desync the button's visual state).</summary>
+		/// <summary>Set by KrillToolbarApp so the toolbar button un-presses itself when the window closes through its own ✕.</summary>
 		public static System.Action OnClosed;
 
 		private RectTransform windowRect;
 		private Transform contentHost;
 
-		/// <summary>
-		/// Last on-screen position, so reopening the window lands where it was left
-		/// instead of snapping back to the default (2026-08-27, ported from KRAB's
-		/// own recent addition — same pattern). Static and session-scoped like
-		/// `current` itself: survives closing/reopening the window, resets on a KSP
-		/// restart. Not persisted to disk.
-		/// </summary>
+		/// <summary>Last on-screen position, so reopening lands where the window was left. Session-scoped like `current`, never persisted to disk.</summary>
 		private static Vector2? lastWindowPosition;
 
-		/// <summary>Set by BuildColumn each rebuild; read back at the START of the NEXT RebuildContent to restore that column's scroll position (see class doc, 2026-07-19). Null while the picker overlay (BuildPickPrompt/BuildActionPicker) is showing instead of the 3 columns.</summary>
+		/// <summary>Set by BuildColumn, read back at the start of the next rebuild to restore scroll. Null while the picker overlay replaces the columns.</summary>
 		private ScrollRect groupScrollRect, partScrollRect, actionScrollRect;
 
 		/// <summary>
-		/// Last known scroll position per column, 1f (top) by default. Separate from
-		/// the ScrollRect refs above on purpose (2026-07-20 fix): "+Part"/"+Action"
-		/// detour through the picker overlay, which has no columns at all, so the
-		/// ScrollRect refs go null for that rebuild and stay null — reading straight
-		/// from them once the picker closes would see null and silently reset to the
-		/// top. These floats are updated from the live rects whenever one exists, so
-		/// they still hold the last real position across a picker round-trip.
+		/// Last known scroll position per column, top by default. Kept separately from
+		/// the ScrollRect refs above because the picker overlay has no columns at all:
+		/// reading the refs after it closes would see null and reset to the top.
 		/// </summary>
 		private float groupScrollPos = 1f, partScrollPos = 1f, actionScrollPos = 1f;
 
 		/// <summary>0 = Default, 1..4 = the stock override sets (Vessel.GroupOverride values).</summary>
 		private int activeSet;
 
-		/// <summary>Selected row in column 1, or null. Survives set-tab switches (comparing the same group across sets is useful); cleared on vessel change.</summary>
+		/// <summary>Selected row in column 1, or null. Survives set-tab switches, so the same group can be compared across sets; cleared on vessel change.</summary>
 		private int? selectedGroup;
 
 		/// <summary>
-		/// Selected AXIS row in column 1 (2026-09-07, A2), or null — mutually
-		/// exclusive with selectedGroup: column 1 holds both lists but there is one
-		/// selection, and columns 2/3 + footer render either the group view or the
-		/// axis view of it. Same lifetime rules as selectedGroup.
+		/// Selected AXIS row in column 1, or null — mutually exclusive with
+		/// selectedGroup: column 1 holds both lists but there is one selection, and
+		/// columns 2/3 plus the footer render either view of it.
 		/// </summary>
 		private int? selectedAxis;
 
 		/// <summary>
-		/// Whether column 1's "Axes" section is unfolded. Session-scoped (static,
-		/// like `current`): survives closing/reopening the window, resets on a KSP
-		/// restart, never persisted. Null until first decided, which happens on the
-		/// first rebuild: open if the craft being shown already carries any
-		/// extended-axis data, folded otherwise — so players who never touch axes
-		/// don't pay for the rows (user decision 2026-09-07).
+		/// Whether column 1's Axes section is unfolded. Session-scoped, never persisted,
+		/// and undecided until the first rebuild: open if the craft already carries
+		/// extended-axis data, folded otherwise.
 		/// </summary>
 		private static bool? axesSectionOpen;
 
@@ -113,22 +75,19 @@ namespace KRILL.UI
 			public string bind;
 		}
 
-		/// <summary>Selected row in column 2 (persistent blue highlight — not just picker hover), or null. Cleared whenever the group selection or the active set changes: the Parts list it indexes into is scoped to (activeSet, selectedGroup).</summary>
+		/// <summary>Selected row in column 2, or null. Cleared on any group or set change: the Parts list it indexes into is scoped to both.</summary>
 		private Part selectedPart;
 
-		/// <summary>Dark blue for the persistently SELECTED part — distinct from the picker's cyan hover so the two meanings never look the same (user clarification 2026-07-18).</summary>
+		/// <summary>Dark blue for the persistently selected part, distinct from the picker's cyan hover so the two meanings never look alike.</summary>
 		private static readonly Color SelectedPartColor = new Color(0.18f, 0.35f, 0.85f);
 
 		/// <summary>Two-click confirm for the part [x] (removes every action of that part in this group+set).</summary>
 		private bool pendingRemovePart;
 
 		/// <summary>
-		/// The axis footer's value slider and its readout (A4), null outside axis
-		/// mode. Followed live from LateUpdate (a bound axis moves with the
-		/// controller, a released Spring axis ramps home) except while the mouse
-		/// holds the handle, when the slider is the source instead. Both refs
-		/// die with every rebuild (RebuildContent nulls them before destroying
-		/// the footer).
+		/// The axis footer's value slider and readout, null outside axis mode. Followed
+		/// live from LateUpdate — a bound axis moves with the controller, a released
+		/// Spring ramps home — except while the mouse holds the handle.
 		/// </summary>
 		private Slider axisValueSlider;
 		private Text axisValueLabel;
@@ -177,14 +136,12 @@ namespace KRILL.UI
 			}
 			ClearPickerState();
 			ClearPartHighlight();
-			// Safety net: don't leave a capture's ALLBUTCAMERAS lock stuck if the
-			// window itself closes mid-capture (e.g. the editor scene starts
-			// unloading) — nothing else would be left alive to release it.
+			// Safety net: a capture's lock must not stay stuck if the window closes
+			// mid-capture — nothing else would be left alive to release it.
 			KrillCapture.ForceCancel();
 			KrillAxisCapture.ForceCancel();
-			// No Hold release needed here: a pressed Hold Trigger button releases
-			// itself when its GameObject is disabled/destroyed (KrillUi.HoldTracker.
-			// OnDisable), whatever the reason — closing the window included.
+			// No Hold release needed here: a pressed Trigger button releases itself when
+			// its GameObject is disabled or destroyed, closing the window included.
 			InputLockManager.RemoveControlLock(InputLockId);
 			GameEvents.onGameSceneLoadRequested.Remove(OnSceneChange);
 			GameEvents.OnVesselOverrideGroupChanged.Remove(OnVesselSetChanged);
@@ -235,11 +192,9 @@ namespace KRILL.UI
 			bool visible = !hiddenByUI && !hiddenByPause;
 			if (!visible && pickerKind != PickerKind.None)
 			{
-				// A part/action pick holds an input lock and needs the (now invisible)
-				// prompt to make sense of it — cancel rather than leave both stranded.
-				// Key/axis captures are NOT touched: they live in KrillInputManager,
-				// hold their own lock, and Escape cancels them before the pause menu
-				// can even open (KrillCapture's key-up wait).
+				// A part/action pick holds an input lock and needs its now-invisible prompt
+				// to make sense, so cancel it. Key and axis captures are not touched: they
+				// live in KrillInputManager and Escape cancels them before the pause menu.
 				CancelPicker();
 			}
 			gameObject.SetActive(visible);
@@ -250,7 +205,7 @@ namespace KRILL.UI
 			Close();
 		}
 
-		/// <summary>Keeps the tab highlight in sync when the set changes from elsewhere — stock F6/F7, another mod, or our own tab click in flight (which itself goes through Vessel.SetGroupOverride, so this also handles that path — see OnTabClicked).</summary>
+		/// <summary>Keeps the tab highlight in sync whoever changed the set: stock F6/F7, another mod, or our own tab click, which goes through stock too.</summary>
 		private void OnVesselSetChanged(Vessel v)
 		{
 			if (v == null || v != FlightGlobals.ActiveVessel)
@@ -263,18 +218,9 @@ namespace KRILL.UI
 		}
 
 		/// <summary>
-		/// Set by the three EVENT-driven rebuild paths (set change, vessel change,
-		/// group activation) and consumed in LateUpdate — never while the window's
-		/// own Hold Trigger button is pressed (KrillSignal.AnyWindowHeld). Rebuilding
-		/// tears down every footer GameObject, so an unrelated event mid-press (a
-		/// key elsewhere, F6/F7) would otherwise pull the held button from under the
-		/// mouse; deferring keeps the press intact until the player lets go, and the
-		/// release itself then triggers the pending rebuild (2026-09-02, replaces
-		/// the earlier per-event AnyUiHeld guard that only covered one of the three
-		/// paths). Should the button be destroyed anyway, it releases itself
-		/// (KrillUi.HoldTracker.OnDisable) — this deferral is UX, not correctness.
-		/// Click-driven rebuilds stay synchronous: the player can't click anything
-		/// else while holding the mouse on the button.
+		/// Set by the event-driven rebuild paths and consumed in LateUpdate, never
+		/// while the window's own Hold button is pressed: a rebuild would pull the
+		/// held button from under the mouse. Purely UX — it releases itself anyway.
 		/// </summary>
 		private bool rebuildPending;
 
@@ -283,7 +229,7 @@ namespace KRILL.UI
 			rebuildPending = true;
 		}
 
-		/// <summary>Keeps the footer live for a real activation regardless of source (keypress via KrillInputManager, or our own buttons) — see KrillActivation.GroupActivated. Deferred via RequestRebuild, see its doc.</summary>
+		/// <summary>Keeps the footer live for a real activation whatever its source, keypress or our own buttons. Deferred through RequestRebuild.</summary>
 		private void OnGroupActivated(Vessel v, int group)
 		{
 			if (v != FlightGlobals.ActiveVessel)
@@ -294,13 +240,9 @@ namespace KRILL.UI
 		}
 
 		/// <summary>
-		/// Switching the active vessel (e.g. '['/']') leaves selectedPart pointing
-		/// at a craft that's no longer the one being shown — deselect rather than
-		/// show a stale blue highlight on an unrelated ship. Also cancels any
-		/// in-progress picker: HandlePartPicking's PartOnActiveCraft check would
-		/// otherwise silently start scoping to the NEW vessel on the very next
-		/// frame, letting the player pick a part on a completely different craft
-		/// than the one they opened "+Part" on.
+		/// Switching the active vessel leaves selectedPart pointing at another craft,
+		/// so drop it. Also cancels any picker: it would silently start scoping to the
+		/// NEW vessel on the next frame, on a craft the player never opened it for.
 		/// </summary>
 		private void OnActiveVesselChanged(Vessel v)
 		{
@@ -333,7 +275,7 @@ namespace KRILL.UI
 			return EditorLogic.fetch != null && EditorLogic.fetch.ship != null ? EditorLogic.fetch.ship.parts : null;
 		}
 
-		/// <summary>Root part carrying group names/toggle state (design doc §5 convention). No ShipConstruct.rootPart in the editor — first parentless part.</summary>
+		/// <summary>Root part carrying the group names and per-(set, number) state. The editor has no ShipConstruct.rootPart: first parentless part.</summary>
 		private static Part RootPart()
 		{
 			if (HighLogic.LoadedSceneIsFlight)
@@ -379,13 +321,9 @@ namespace KRILL.UI
 			GameEvents.OnVesselOverrideGroupChanged.Add(OnVesselSetChanged);
 			GameEvents.onVesselChange.Add(OnActiveVesselChanged);
 			KrillActivation.GroupActivated += OnGroupActivated;
-			// In-game report, 2026-09-11: the window stayed on top of the stock pause
-			// menu (Esc) and ignored F2 (hide UI) — every other KSP UI hides for
-			// both. Same pattern KRAB fixed on 2026-08-15 (KrabEditorWindow):
-			// toggling gameObject.SetActive stops Update/LateUpdate too (cheap while
-			// hidden) without tearing down any state; re-showing needs no rebuild.
-			// FocusLock.OnDisable releases the hover lock if the pointer was over
-			// the window at that moment, so no lock is left behind while hidden.
+			// The window hides for the pause menu and for F2, like every other KSP UI.
+			// Toggling gameObject.SetActive also stops Update/LateUpdate and tears down
+			// no state; FocusLock.OnDisable drops the hover lock if the pointer was on it.
 			GameEvents.onHideUI.Add(HandleHideUI);
 			GameEvents.onShowUI.Add(HandleShowUI);
 			GameEvents.onGamePause.Add(HandleGamePause);
@@ -450,10 +388,9 @@ namespace KRILL.UI
 
 		internal void RebuildContent()
 		{
-			// Update the persisted positions from the OLD (about to be destroyed)
-			// ScrollRects, when they exist — see groupScrollPos field doc. Left
-			// UNCHANGED when a rect is already null (i.e. the picker overlay was
-			// showing), so the picker never overwrites these with a stale default.
+			// Update the persisted positions from the OLD ScrollRects while they exist,
+			// and leave them alone when one is null, so the picker never writes a stale
+			// default over them.
 			if (groupScrollRect != null)
 			{
 				groupScrollPos = groupScrollRect.verticalNormalizedPosition;
@@ -535,10 +472,9 @@ namespace KRILL.UI
 			List<BaseAxisField> stockFields = (axisMode && selIsStock)
 				? KrillQuery.GetStockAxisFields(parts, activeSet, StockAxisGroups[selectedAxis.Value - 1]) : new List<BaseAxisField>();
 
-			// Not a plain IndexOf: assignedParts holds one REPRESENTATIVE per symmetry
-			// group (KrillQuery.GetAssignedParts), but selectedPart may be whichever
-			// sibling was actually clicked in the scene picker, not necessarily that
-			// representative — IsSelectedPartOrSibling treats the whole group as one.
+			// Not a plain IndexOf: assignedParts holds one representative per symmetry
+			// group, while selectedPart may be whichever sibling was clicked in the
+			// scene, so the whole group has to count as one.
 			int pIdx = (selectedPart != null) ? assignedParts.FindIndex(IsSelectedPartOrSibling) : -1;
 			bool hasSelection = axisMode || gIdx >= 0;
 			bool partTransient = selectedPart != null && !selIsStock && pIdx < 0 && hasSelection;
@@ -590,10 +526,9 @@ namespace KRILL.UI
 				BuildFooter(parts, gIdx >= 0 ? (GroupEntry?)groups[gIdx] : null);
 			}
 
-			// Layout groups / ContentSizeFitter haven't measured the new content on
-			// this same frame yet — setting verticalNormalizedPosition before a
-			// forced layout pass would be measured against a stale (usually zero)
-			// content height and get silently ignored.
+			// The layout has not measured the new content on this frame yet: setting the
+			// scroll position before a forced pass would be measured against a stale
+			// content height and silently ignored.
 			Canvas.ForceUpdateCanvases();
 			if (groupScrollRect != null)
 			{
@@ -609,7 +544,7 @@ namespace KRILL.UI
 			}
 		}
 
-		/// <summary>One column: header label + its own independent ScrollList, fixed to ColWidth. Returns the list's content transform to fill.</summary>
+		/// <summary>One column: header label plus its own ScrollList, fixed to ColWidth. Returns the list's content transform to fill.</summary>
 		private RectTransform BuildColumn(Transform parent, string headerLocKey, out ScrollRect scrollRect)
 		{
 			GameObject col = KrillUi.Go("Col", parent);
@@ -637,10 +572,9 @@ namespace KRILL.UI
 					bind = StockBindDescribe(i),
 				});
 			}
-			// 2026-07-19: every extended number up to the settings cap is listed
-			// unconditionally — not just the ones with data (KrillQuery.GroupsInUse).
-			// A group with zero assignments is just an empty row: nothing to persist,
-			// nothing to delete, so there's no group-level [x] anymore (see BuildGroupCell).
+			// Every extended number up to the settings cap is listed unconditionally, not
+			// just the ones with data: a group with no assignments is simply an empty
+			// row, with nothing to persist and nothing to delete.
 			int cap = KrillParams.MaxVisibleGroup;
 			for (int i = KrillGroups.FirstExtended; i <= cap; i++)
 			{
@@ -670,10 +604,9 @@ namespace KRILL.UI
 		}
 
 		/// <summary>
-		/// Column 1's second list (2026-09-07, A2): A1-A4 mirror the stock custom
-		/// axes (name only here — their bind/value come with A5), then every extended
-		/// axis number up to the axis cap, unconditionally, exactly like groups. Bind
-		/// column stays "-" until the axis keymap exists (A3).
+		/// Column 1's second list: A1-A4 mirror the stock custom axes, then every
+		/// extended axis number up to the axis cap, unconditionally, exactly like the
+		/// group list above.
 		/// </summary>
 		private List<AxisEntry> BuildAxisEntries(IList<Part> parts)
 		{
@@ -687,8 +620,7 @@ namespace KRILL.UI
 					number = i,
 					isStock = isStock,
 					name = KrillQuery.GetAxisName(parts, activeSet, i) ?? DefaultAxisName(i),
-					// Stock A1-A4 mirror GameSettings.AXIS_CUSTOM (A5); extended axes
-					// read the KRILL axis keymap (A3).
+					// A1-A4 mirror GameSettings.AXIS_CUSTOM; extended axes read the KRILL keymap.
 					bind = isStock ? StockAxisBindDescribe(i) : ExtendedAxisBindDescribe(i),
 				});
 			}
@@ -736,9 +668,8 @@ namespace KRILL.UI
 			DeselectPart();
 			if (HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null)
 			{
-				// Actually switches the vessel's live set (F6/F7 do the same thing
-				// internally) — OnVesselSetChanged picks up activeSet + rebuild from
-				// the resulting event, so no need to duplicate that here.
+				// Switches the vessel's live set, exactly as F6/F7 do; the resulting event
+				// brings activeSet and the rebuild with it.
 				FlightGlobals.ActiveVessel.SetGroupOverride(set);
 			}
 			else
@@ -748,23 +679,12 @@ namespace KRILL.UI
 			}
 		}
 
-		// ------------------------------------------------------------ set jump (M4)
+		// ----------------------------------------------------------- set jump
 
 		/// <summary>
-		/// One small row under the tabs, always visible: a "jump directly to this
-		/// set" bind per set, independent of which group/part is selected — global
-		/// player keymap (KrillSetKeymap), same capture mechanism as group binds.
-		/// Editable in both scenes (like the group Capture button); only fires in
-		/// flight (KrillInputManager) since Vessel.SetGroupOverride needs a Vessel.
-		///
-		/// 2026-07-25 user report: an earlier version led with a fixed-width "Jump:"
-		/// label cell, which threw the 5 buttons out of alignment with the 5 tabs
-		/// directly above (different cell count/widths between the two rows).
-		/// Dropped the label — an unbound cell now just shows the localized word
-		/// "Jump" as its own text instead — and this row now mirrors BuildSetTabs'
-		/// Horizontal/Size calls EXACTLY (same padding, spacing, cell count, each
-		/// cell width=auto+flexible=1) so the two rows are structurally forced to
-		/// produce identical column positions, not just visually close by eye.
+		/// One always-visible row under the tabs: a "jump to this set" bind per set,
+		/// editable in both scenes but firing only in flight. Mirrors BuildSetTabs'
+		/// layout calls exactly, so both rows are forced to the same column positions.
 		/// </summary>
 		private void BuildSetJumpRow()
 		{
@@ -777,9 +697,8 @@ namespace KRILL.UI
 				string text = bind != null ? bind.Describe() : Loc("#LOC_KRILL_ui_setJumpEmpty");
 				Button btn = KrillUi.TextButton(row.transform, text, () => StartSetCapture(captured),
 					KrillUi.Panel2, bind != null ? KrillUi.GreenHi : KrillUi.Muted, 10, 0f, 18f);
-				// Six equal shares of the row (preferredWidth 0 + flexible 1): a long
-				// modifier+key description clips inside its own button instead of
-				// pushing the neighbours out of the window (2026-09-11).
+				// Six equal shares of the row: a long bind description clips inside its own
+				// button instead of pushing the neighbours out of the window.
 				KrillUi.Size(btn.gameObject, 0f, 18f, 1f);
 				KrillUi.ClipText(btn.GetComponentInChildren<Text>());
 			}
@@ -829,9 +748,8 @@ namespace KRILL.UI
 					() => OnGroupClicked(g.number, g.isStock));
 			}
 
-			// Axes section (2026-09-07, A2): a fold header, then the axis rows. Same
-			// row shape as groups with an "A" prefix on the number, so the two
-			// numberings can't be confused at a glance.
+			// Axes section: a fold header, then the axis rows — same shape as the groups
+			// with an "A" prefix, so the two numberings can't be confused at a glance.
 			bool open = axesSectionOpen ?? false;
 			RectTransform head = KrillUi.Bordered("AxesHead", listContent, KrillUi.HeadA, KrillUi.Line);
 			KrillUi.Size(head.gameObject, -1f, RowHeight);
@@ -902,7 +820,7 @@ namespace KRILL.UI
 			return Loc("#LOC_KRILL_ui_groupDefaultName") + " " + group;
 		}
 
-		/// <summary>Stock custom axes reuse stock's own names (#autoLOC_6013013..16 = "Custom01".."Custom04", the same keys the stock editor shows); extended axes get "Axis N".</summary>
+		/// <summary>Stock custom axes reuse stock's own localized names, the ones its editor shows; extended axes get "Axis N".</summary>
 		private static string DefaultAxisName(int axis)
 		{
 			if (axis < KrillAxes.FirstExtended)
@@ -929,15 +847,9 @@ namespace KRILL.UI
 					BuildReadOnlyCell(listContent, Loc("#LOC_KRILL_ui_noAssignments"));
 					return;
 				}
-				// Read-only info: part + action combined onto one line rather than
-				// split across columns 2/3 — with every column scrolling
-				// independently now (2026-07-19 rework), keeping them split would
-				// only stay visually paired by matching row index, exactly the kind
-				// of shared-row assumption this rework removes everywhere else.
-				// Part names routinely overflow ColWidth once combined with an
-				// action name (2026-07-20 user report) — truncate the part side,
-				// never the action side: the action is what a player is scanning
-				// this list FOR, the part is usually recognizable from a few letters.
+				// Read-only info: part and action on one line rather than split across two
+				// independently scrolling columns, which would only look paired by row index.
+				// The part side is truncated — the action is what a player scans this list for.
 				for (int i = 0; i < stockActions.Count; i++)
 				{
 					Part owner = stockActions[i].listParent != null ? stockActions[i].listParent.part : null;
@@ -962,7 +874,7 @@ namespace KRILL.UI
 				KrillUi.Panel2, KrillUi.GreenHi, 11, -1f, RowHeight);
 		}
 
-		/// <summary>Column 2 in axis mode (2026-09-07, A2): parts holding axis-field assignments for the selected axis; stock axes A1-A4 get the same read-only "part → field" view groups 1-10 have.</summary>
+		/// <summary>Column 2 in axis mode: parts holding assignments for the selected axis; A1-A4 get the same read-only view groups 1-10 have.</summary>
 		private void BuildAxisPartColumn(Transform listContent, bool selIsStock,
 			List<Part> assignedParts, bool partTransient, List<BaseAxisField> stockFields)
 		{
@@ -997,7 +909,7 @@ namespace KRILL.UI
 				KrillUi.Panel2, KrillUi.GreenHi, 11, -1f, RowHeight);
 		}
 
-		/// <summary>Player-facing name of an axis field: its PAW caption when it has one (run through the Localizer — stock guiNames are often #autoLOC keys), else the raw field name.</summary>
+		/// <summary>Player-facing name of an axis field: its localized PAW caption when it has one, else the raw field name.</summary>
 		private static string FieldLabel(BaseAxisField f)
 		{
 			return string.IsNullOrEmpty(f.guiName) ? f.name : Localizer.Format(f.guiName);
@@ -1021,11 +933,9 @@ namespace KRILL.UI
 		{
 			if (pendingRemovePart)
 			{
-				// Fans out to every CURRENT symmetry sibling of p, not just p itself
-				// (2026-07-27) — each holds its own independent copy of the same
-				// assignments, so removing from only one would leave the group
-				// visually merged (still symmetric) but functionally desynced.
-				// Axis mode (A2) is the same operation on the axis lists.
+				// Fans out to every current symmetry sibling, not just the part clicked:
+				// each holds its own copy of the assignments, so removing from one only
+				// would leave the group visually merged but functionally desynced.
 				if (selectedGroup.HasValue || selectedAxis.HasValue)
 				{
 					foreach (Part sibling in KrillQuery.GetSymmetryGroup(p))
@@ -1058,9 +968,8 @@ namespace KRILL.UI
 
 		private void BuildActionColumn(Transform listContent, bool selIsStock, List<KrillQuery.AssignmentEntry> actionEntries)
 		{
-			// Stock groups: their actions are already shown paired with their owning
-			// part in column 2 (BuildPartColumn) — nothing of substance to add here.
-			// selectedPart is always null in stock context (RebuildContent's guard).
+			// Stock groups already show their actions paired with the owning part in
+			// column 2, so there is nothing of substance to add here.
 			if (selIsStock || selectedPart == null)
 			{
 				return;
@@ -1084,10 +993,9 @@ namespace KRILL.UI
 				{
 					entry.module.MarkDirty();
 				}
-				// Same value on every OTHER symmetric sibling of entry.part — each has
-				// its own independent KrillAssignment object (same values), so it can't
-				// be removed by the reference-based call above; match by value instead
-				// (2026-07-27, same reasoning as OnRemovePartClicked).
+				// Same value on every other symmetric sibling: each has its own assignment
+				// object with the same values, so it can't be removed by reference —
+				// match by value instead.
 				KrillActionRef r = entry.assignment.actionRef;
 				if (r != null && entry.part != null)
 				{
@@ -1111,12 +1019,9 @@ namespace KRILL.UI
 		// ------------------------------------------------------ column 3, axis mode
 
 		/// <summary>
-		/// Column 3 in axis mode (2026-09-07, A2): two rows per assigned field — the
-		/// field name with its [x], then the per-assignment options as cycling text
-		/// buttons (user decision: text, not checkboxes): direct/inverted,
-		/// absolute/incremental, and the speed step (shown only in incremental mode,
-		/// the only mode it applies to — same as stock). Grows inside the scrolling
-		/// column, so the footer and the window frame stay exactly as they are.
+		/// Column 3 in axis mode: two rows per assigned field — the field name with its
+		/// [x], then the per-assignment options as cycling text buttons. The speed step
+		/// shows only in incremental mode, the only mode it applies to, like stock.
 		/// </summary>
 		private void BuildFieldColumn(Transform listContent, bool selIsStock, List<KrillQuery.AxisFieldEntry> fieldEntries)
 		{
@@ -1133,9 +1038,8 @@ namespace KRILL.UI
 
 				KrillAxisAssignment a = entry.assignment;
 				// New values computed ONCE here, not inside the apply lambda: the lambda
-				// runs on every symmetry sibling in turn, and the source assignment is
-				// one of them — reading `!a.inverted` per call would flip the first and
-				// un-flip the rest.
+				// runs on every sibling in turn and the source assignment is one of them,
+				// so reading `!a.inverted` per call would flip the first and un-flip the rest.
 				bool newInverted = !a.inverted;
 				bool newIncremental = !a.incremental;
 				GameObject opts = KrillUi.Go("FieldOpts", listContent);
@@ -1159,11 +1063,7 @@ namespace KRILL.UI
 				KrillUi.Panel2, KrillUi.GreenHi, 11, -1f, RowHeight);
 		}
 
-		/// <summary>
-		/// Applies an option change to the entry's own assignment AND to the matching
-		/// (by value) assignment on every symmetry sibling — options are part of the
-		/// assignment, so they fan out exactly like adding/removing one does.
-		/// </summary>
+		/// <summary>Applies an option change to the entry's assignment and to the matching one on every symmetry sibling, exactly as add/remove fan out.</summary>
 		private void EditFieldOptions(KrillQuery.AxisFieldEntry entry, System.Action<KrillAxisAssignment> apply)
 		{
 			if (entry.assignment == null || entry.part == null)
@@ -1193,8 +1093,8 @@ namespace KRILL.UI
 			if (entry.assignment != null && entry.part != null)
 			{
 				KrillAxisAssignment a = entry.assignment;
-				// By value on every sibling INCLUDING entry.part itself — same
-				// reasoning as RemoveActionEntry, one loop instead of two paths.
+				// By value on every sibling INCLUDING entry.part, so there is one loop
+				// instead of two separate paths.
 				foreach (Part sibling in KrillQuery.GetSymmetryGroup(entry.part))
 				{
 					ModuleKrill m = sibling.FindModuleImplementing<ModuleKrill>();
@@ -1209,7 +1109,7 @@ namespace KRILL.UI
 
 		// -------------------------------------------------------------- cell helpers
 
-		/// <summary>Part/action names in columns 2/3 for EXTENDED groups (2026-07-25 user request) — 30 real characters plus a single ellipsis glyph "…" (not three dots: 31 total, not 33). Separate from TruncateStockOwnerName below, which is shorter and scoped to the stock read-only view only.</summary>
+		/// <summary>Part/action names in columns 2/3 for extended groups: 30 characters plus one ellipsis glyph. The stock read-only view uses its own, shorter cap.</summary>
 		private const int ExtendedLabelMaxChars = 30;
 
 		private static string TruncateExtendedLabel(string name)
@@ -1252,7 +1152,7 @@ namespace KRILL.UI
 			KrillUi.Size(nm.gameObject, -1f, RowHeight, 1f);
 		}
 
-		/// <summary>Fits "PartName → ActionName" in one ColWidth-wide row (2026-07-20 user report) — picked by eye against the actual column width, not measured against the font metrics.</summary>
+		/// <summary>Fits "PartName → ActionName" in one ColWidth-wide row. Picked by eye against the real column width, not from font metrics.</summary>
 		private const int StockOwnerNameMaxChars = 8;
 
 		private static string TruncateStockOwnerName(string name)
@@ -1280,7 +1180,7 @@ namespace KRILL.UI
 			pendingRemovePart = false;
 		}
 
-		/// <summary>Is p the selected part, or one of ITS current symmetry siblings (2026-07-27)? Used everywhere a plain "== selectedPart" would miss the rest of a symmetric group — selectedPart is whichever specific instance was clicked, not necessarily the group's representative row.</summary>
+		/// <summary>Is p the selected part or one of its symmetry siblings? A plain "== selectedPart" would miss the rest of the group.</summary>
 		private bool IsSelectedPartOrSibling(Part p)
 		{
 			return selectedPart != null && (p == selectedPart || KrillQuery.GetSymmetryGroup(p).Contains(selectedPart));
@@ -1342,7 +1242,7 @@ namespace KRILL.UI
 			return kb.primary.code.ToString();
 		}
 
-		// ------------------------------------------------- stock custom axes (A5)
+		// ------------------------------------------------------ stock custom axes
 
 		/// <summary>Stock custom axis `axis` (1-4) as GameSettings holds it, or null out of range.</summary>
 		private static AxisKeyBinding StockAxisKeyBinding(int axis)
@@ -1355,7 +1255,7 @@ namespace KRILL.UI
 			return list[axis - 1];
 		}
 
-		/// <summary>The PRIMARY controller channel of stock custom axis `axis` — the slot the Capture button of a mirror row writes (stock's own settings screen fills the same object in place, decompiled InputSettings.SetAxis).</summary>
+		/// <summary>The primary controller channel of stock custom axis `axis`: the slot a mirror row's Capture writes, in place, like stock's own screen.</summary>
 		private static AxisBinding_Single StockAxisBinding(int axis)
 		{
 			AxisKeyBinding akb = StockAxisKeyBinding(axis);
@@ -1363,10 +1263,9 @@ namespace KRILL.UI
 		}
 
 		/// <summary>
-		/// Column-1 / footer text for a mirror row: the primary channel in stock's
-		/// "Device Axis N" wording (or "-"), plus the +/- keys stock also offers
-		/// for its custom axes when either is set — a keyboard-only player would
-		/// otherwise see "-" on an axis that does move.
+		/// Column-1 and footer text for a mirror row: the primary channel in stock's
+		/// own wording, plus the +/- keys stock offers for its custom axes, so a
+		/// keyboard-only player never sees "-" on an axis that does move.
 		/// </summary>
 		private static string StockAxisBindDescribe(int axis)
 		{
@@ -1386,7 +1285,7 @@ namespace KRILL.UI
 			return text;
 		}
 
-		/// <summary>Column-1 / footer text of an extended axis (K2): the channel (or "-") plus its +/- keys when either is set — the mirror rows' wording, so a keys-only axis never shows a bare "-".</summary>
+		/// <summary>Column-1 and footer text of an extended axis: the channel plus its +/- keys, in the mirror rows' wording, so a keys-only axis is never bare.</summary>
 		private static string ExtendedAxisBindDescribe(int axis)
 		{
 			string text = KrillAxisKeymap.Describe(axis);
@@ -1407,14 +1306,9 @@ namespace KRILL.UI
 		}
 
 		/// <summary>
-		/// Writes (bind != null) or clears (bind == null) the primary channel of
-		/// stock custom axis `axis` and saves settings.cfg, exactly like a stock
-		/// group's Capture writes its KeyBinding. Mutates the existing object in
-		/// place and copies only the channel IDENTITY (id, device name/index, axis
-		/// index, title): inversion, sensitivity, dead zone, scale and the lock
-		/// mask are stock's per-axis settings, managed in stock's Input screen,
-		/// and a recapture must not reset them. Clearing mirrors stock's own
-		/// "Clear Assignment" (SetAxis("None", "None", -1, -1)).
+		/// Writes or clears the primary channel of a stock custom axis and saves the
+		/// settings. Copies only the channel IDENTITY: inversion, sensitivity, dead
+		/// zone, scale and lock mask are stock's, and a recapture must not reset them.
 		/// </summary>
 		private static void WriteStockAxisBind(int axis, AxisBinding_Single bind)
 		{
@@ -1442,7 +1336,7 @@ namespace KRILL.UI
 			GameSettings.SaveSettings();
 		}
 
-		/// <summary>The group's CURRENT bind as a KrillBind, for a persistent conflict check in the footer (KrillConflicts.Describe takes a candidate bind — stock groups don't have layered modifiers, so this is always primary-only for them).</summary>
+		/// <summary>The group's current bind as a KrillBind, for the footer's conflict check. Always primary-only for stock groups, which have no modifiers.</summary>
 		private static KrillBind CurrentBind(GroupEntry g)
 		{
 			if (g.isStock)
@@ -1470,12 +1364,9 @@ namespace KRILL.UI
 				KrillUi.TextButton(row, Loc("#LOC_KRILL_ui_capture"), () => StartCapture(g.number, g.isStock),
 					KrillUi.Panel2, KrillUi.TanDim, 11, 55f, 22f);
 
-				// Kind (Pulse/Toggle/Hold) resolved once, extended groups only — feeds
-				// both the Trigger button just below (Hold needs press-and-hold, not a
-				// click) and the kind/state controls further down. Same scope boundary
-				// as everything else that manages assignments/keymaps — stock 1-10
-				// already have their own public, persisted state via
-				// vessel.ActionGroups, KRILL doesn't need to add anything there.
+				// Kind resolved once, extended groups only: it feeds both the Trigger button
+				// below (Hold needs press-and-hold, not a click) and the controls further
+				// down. Stock 1-10 already have their own persisted state in vessel.ActionGroups.
 				KrillQuery.GroupState? gs = !g.isStock ? KrillQuery.GetGroupState(RootPart(), activeSet, g.number) : null;
 				KrillActuationKind kind = gs?.kind ?? KrillActuationKind.Pulse;
 
@@ -1483,12 +1374,9 @@ namespace KRILL.UI
 				{
 					if (kind == KrillActuationKind.Hold)
 					{
-						// Press-and-hold, not a toggle (2026-08-19 design discussion):
-						// mirrors stock's own BRAKES precedent and keeps the promise of
-						// Hold consistent across every activation source (key, this
-						// button, the console) — mouse-down is a Window-source press,
-						// mouse-up (or the button going away) its release; the engine
-						// actuates on the group's 0->1 / 1->0 edges across all sources.
+						// Press-and-hold, not a toggle, so the meaning of Hold is the same from
+						// every source: mouse-down is a Window press, mouse-up its release, and
+						// the engine actuates on the group's 0->1 / 1->0 edges across all of them.
 						KrillUi.HoldButton(row, Loc("#LOC_KRILL_ui_trigger"),
 							() => KrillActivation.HoldPress(FlightGlobals.ActiveVessel, g.number, KrillHoldSource.Window),
 							() => KrillActivation.HoldRelease(g.number, KrillHoldSource.Window),
@@ -1507,10 +1395,9 @@ namespace KRILL.UI
 					KrillUi.TextButton(row, kindLabel, () => CycleKind(g.number),
 						KrillUi.Panel2, KrillUi.TanDim, 11, 65f, 22f);
 
-					// Toggle only: it's the one kind whose signal is a persisted value
-					// the player can meaningfully declare. A Pulse signal is a timer
-					// and a Hold signal is "someone is pressing right now" — neither
-					// has a stored value to force (2026-08-25, reconfirmed 2026-09-02).
+					// Toggle only: the one kind whose signal is a persisted value the player can
+					// declare. A Pulse signal is a timer and a Hold signal is "someone is
+					// pressing right now" — neither has a stored value to force.
 					if (kind == KrillActuationKind.Toggle)
 					{
 						bool state = gs.Value.signal;
@@ -1521,13 +1408,9 @@ namespace KRILL.UI
 					}
 				}
 
-				// Indicator type (2026-08-24 design discussion) — console severity
-				// label, cosmetic only, no dependency on kind/activation engine. Unlike
-				// the kind/state controls above, offered for stock groups too: the
-				// future console grid shows 1-10 alongside extended groups (same
-				// reasoning as KrillGroupName already allowing stock groups). "Console",
-				// not "HUD" (2026-08-27): it's a clickable button grid, not a
-				// see-through overlay — the name was corrected before any of it got built.
+				// Console severity label: cosmetic only, with no dependency on the kind or
+				// the activation engine. Unlike the controls above it is offered for stock
+				// groups too, since the console grid will show 1-10 alongside the rest.
 				Part rootForIndicator = RootPart();
 				ModuleKrill mForIndicator = rootForIndicator != null ? rootForIndicator.FindModuleImplementing<ModuleKrill>() : null;
 				KrillIndicatorType indicatorType = mForIndicator != null
@@ -1547,13 +1430,7 @@ namespace KRILL.UI
 			}
 		}
 
-		/// <summary>
-		/// Footer in axis mode (2026-09-07, A2): the same slots as the group footer,
-		/// filled per notes/axes-design.md §6 — name, then Kind (Spring/Fixed)
-		/// and Rest (Spring only) for extended axes, and the info line.
-		/// Capture arrives with A3 and the value slider with A4: their slots stay
-		/// empty until then rather than showing controls that do nothing.
-		/// </summary>
+		/// <summary>Footer in axis mode: the same slots as the group footer — name, capture, the +/- keys, the kind/rest cycle, the value slider, the info line.</summary>
 		private void BuildAxisFooter(AxisEntry a)
 		{
 			GameObject footer = BuildFooterShell(out Transform row);
@@ -1562,9 +1439,8 @@ namespace KRILL.UI
 			KrillUi.Size(nameField.gameObject, 130f, 20f);
 
 			string bindInfo = Localizer.Format("#LOC_KRILL_ui_axisInfo", a.number.ToString(), a.bind);
-			// Same slot and look as the group Capture button; the gesture is
-			// "move an axis" instead of "press a key" (KrillAxisCapture). Offered
-			// for the stock mirror rows too (A5): there it writes AXIS_CUSTOM, the
+			// Same slot and look as the group Capture button, with "move an axis" as the
+			// gesture. Offered for the mirror rows too, where it writes AXIS_CUSTOM the
 			// way a stock group's Capture writes its stock KeyBinding.
 			KrillUi.TextButton(row, Loc("#LOC_KRILL_ui_capture"), () => StartAxisCapture(a.number),
 				KrillUi.Panel2, KrillUi.TanDim, 11, 55f, 22f);
@@ -1572,10 +1448,9 @@ namespace KRILL.UI
 			List<string> conflicts;
 			if (a.isStock)
 			{
-				// A5 mirror row: the level is stock's own custom axis (FlightCtrlState.
-				// custom_axes via KrillQuery) — read-only slider in flight, nothing in
-				// the editor; no Kind/Rest (stock has neither) and no assignment UI
-				// (that's stock's action-group editor, columns 2/3 are read-only).
+				// Mirror row: the level is stock's own custom axis, so the slider is
+				// read-only in flight and absent in the editor, there is no Kind/Rest (stock
+				// has neither) and no assignment UI — that is stock's own editor.
 				KrillQuery.AxisState? stockState = KrillQuery.GetAxisState(RootPart(), activeSet, a.number);
 				if (stockState.HasValue)
 				{
@@ -1591,19 +1466,16 @@ namespace KRILL.UI
 			}
 			else
 			{
-				// +/- key slots (K2, §11.6): one KrillCapture each, Delete clears the
-				// slot; lit when set. The stock mirror rows get theirs in K3.
+				// The +/- key slots: one KrillCapture each, Delete clears the slot, lit when set.
 				BuildAxisKeyButton(row, a.number, true);
 				BuildAxisKeyButton(row, a.number, false);
 
 				KrillQuery.AxisState? st = KrillQuery.GetAxisState(RootPart(), activeSet, a.number);
 				KrillAxisKind kind = st?.kind ?? KrillAxes.DefaultKind;
 
-				// Value slider (A4) in the Trigger/State slots: the axis's live level,
-				// writable only when no controller channel is bound (design §4 — a
-				// bound axis is the controller's, the slider just follows it). A Spring
-				// axis has no stored value, so in the editor (no vessel, no runtime
-				// level) only a Fixed axis gets the slider.
+				// Value slider in the Trigger/State slots: the axis's live level, writable
+				// only when no channel is bound — a bound axis belongs to the controller and
+				// the slider just follows it. In the editor only a Fixed axis has a value.
 				bool bound = KrillAxisKeymap.IsBound(a.number);
 				if (kind == KrillAxisKind.Fixed || HighLogic.LoadedSceneIsFlight)
 				{
@@ -1620,10 +1492,9 @@ namespace KRILL.UI
 					KrillUi.Size(axisValueLabel.gameObject, 40f, 22f);
 				}
 
-				// Kind and rest in ONE four-state cycle (K2, §11.6), starting from the
-				// default: Fixed -> Spring 0 -> Spring -1 -> Spring +1 -> Fixed. Rest only
-				// means something for a Spring, so folding it in loses nothing and pays
-				// for the +/- slots.
+				// Kind and rest in ONE four-state cycle, starting from the default:
+				// Fixed -> Spring 0 -> Spring -1 -> Spring +1 -> Fixed. Rest only means
+				// something for a Spring, so folding them together costs nothing.
 				string kindText;
 				if (kind == KrillAxisKind.Fixed)
 				{
@@ -1648,23 +1519,9 @@ namespace KRILL.UI
 		}
 
 		/// <summary>
-		/// The footer's info label ("Group N — bind: …"), shared by the group and
-		/// axis footers. Since 2026-09-19 it has the footer's second row to itself
-		/// (BuildFooterShell); before that it got only the leftover width and was clipped
-		/// (2026-09-11), which had silently hidden the conflict list appended
-		/// after the bind (A5.4 report, 2026-09-14): with conflicts the label now
-		/// turns Warn (orange) and lists them FIRST, so the colour is always
-		/// visible and the detail is readable for as long as it fits. Without
-		/// conflicts it stays the muted bind line it always was.
-		/// </summary>
-		/// <summary>
-		/// Two-row footer (2026-09-19, after the K2 test: one row had become too
-		/// crowded): every control shares the first 26 px row, the bind/conflict
-		/// line (BuildFooterInfo) gets the whole second row, so long bind
-		/// descriptions and conflict lists finally have room. The window's
-		/// ContentSizeFitter absorbs the extra height. The flight-only set-name
-		/// field went away at the same time (user decision): set names belong to
-		/// stock's own UI, exactly as they already did in the editor.
+		/// Two-row footer: every control shares the first 26 px row and the bind/conflict
+		/// line gets the whole second one, so long descriptions have room. The window's
+		/// ContentSizeFitter absorbs the extra height.
 		/// </summary>
 		private GameObject BuildFooterShell(out Transform controls)
 		{
@@ -1677,6 +1534,11 @@ namespace KRILL.UI
 			return footer;
 		}
 
+		/// <summary>
+		/// The footer's second-row info label, shared by the group and axis footers.
+		/// With conflicts it turns Warn and lists them FIRST, so the colour is always
+		/// visible and the detail stays readable for as long as it fits.
+		/// </summary>
 		private static void BuildFooterInfo(Transform parent, string bindInfo, List<string> conflicts)
 		{
 			bool warn = conflicts != null && conflicts.Count > 0;
@@ -1695,7 +1557,7 @@ namespace KRILL.UI
 			return v.ToString("+0.00;-0.00;0.00");
 		}
 
-		/// <summary>Player-driven slider change on an UNBOUND axis: Fixed writes the persisted value (the same store the driver fills from a controller), Spring sets the live level for as long as the mouse holds it.</summary>
+		/// <summary>Slider change on an unbound axis: Fixed writes the persisted value, Spring sets the live level for as long as the mouse holds it.</summary>
 		private void OnAxisSliderChanged(int axis, KrillAxisKind kind, float value)
 		{
 			if (kind == KrillAxisKind.Fixed)
@@ -1726,7 +1588,7 @@ namespace KRILL.UI
 			}
 		}
 
-		/// <summary>Keeps the slider and its readout on the axis's real level whenever the mouse isn't the one moving it (controller input, return ramp, a set switch).</summary>
+		/// <summary>Keeps the slider and its readout on the axis's real level whenever the mouse is not the one moving it.</summary>
 		private void FollowAxisValue()
 		{
 			if (axisValueSlider == null || axisSliderHeld)
@@ -1809,7 +1671,7 @@ namespace KRILL.UI
 				KrillUi.Panel2, set ? KrillUi.Tan : KrillUi.TanDim, 11, 22f, 22f);
 		}
 
-		/// <summary>Same gesture and class as a group capture (KrillCapture: key or joystick button, modifiers, Esc, Delete clears the slot) — the two slots are just two more places a KrillBind can live.</summary>
+		/// <summary>Same gesture and class as a group capture: the two slots are just two more places a KrillBind can live.</summary>
 		private void StartAxisKeyCapture(int axis, bool plus)
 		{
 			pendingRemovePart = false;
@@ -1862,7 +1724,7 @@ namespace KRILL.UI
 			RebuildContent();
 		}
 
-		/// <summary>The footer's four-state kind/rest cycle (K2): Fixed -> Spring 0 -> Spring -1 -> Spring +1 -> Fixed. Entering Spring from Fixed resets the rest to 0 so the cycle always restarts from the same place.</summary>
+		/// <summary>The footer's kind/rest cycle: Fixed -> Spring 0 -> Spring -1 -> Spring +1 -> Fixed, entering Spring always from rest 0.</summary>
 		private void CycleAxisKindRest(int axis)
 		{
 			Part root = RootPart();
@@ -1970,7 +1832,7 @@ namespace KRILL.UI
 			}
 		}
 
-		/// <summary>Unlike CycleKind, valid for stock groups too — indicator type has no dependency on which engine runs the group.</summary>
+		/// <summary>Unlike CycleKind, valid for stock groups too: the indicator type does not depend on which engine runs the group.</summary>
 		private void CycleIndicator(int group)
 		{
 			Part root = RootPart();
@@ -1992,21 +1854,9 @@ namespace KRILL.UI
 		}
 
 		/// <summary>
-		/// Force-sets a Toggle group's SIGNAL without invoking any action — the
-		/// resync control from the 2026-08-19 design discussion: another mod, or
-		/// the player from the part's right-click menu, can change a part's real
-		/// state without ever going through the KRILL group, leaving the reported
-		/// signal stale. Works in either scene (editor: declare a starting value
-		/// before launch; flight: resync after external drift).
-		///
-		/// Writes ONLY the signal (KrillGroupSignal), never the direction bit
-		/// (user decision 2026-09-02): the signal is the player's declared meaning
-		/// — "this reads as 1 to me" — not a statement about what the part last
-		/// received, so the next real press keeps alternating Activate/Deactivate
-		/// exactly as if this had never been touched. (Before 2026-09-02 the two
-		/// were one bool, and forcing it silently reversed the next press's
-		/// direction — the "took two clicks" note in test-switch-toggle.md.)
-		/// Toggle-kind groups only, see the footer call site.
+		/// Force-sets a Toggle group's signal without invoking any action, for when the
+		/// part's real state has drifted or the player wants to declare a starting
+		/// value. Writes ONLY the signal, so the next press alternates as it would have.
 		/// </summary>
 		private void ForceState(int group, bool value)
 		{
@@ -2035,7 +1885,7 @@ namespace KRILL.UI
 				() => OnBindCleared(group, isStock));
 		}
 
-		/// <summary>Delete pressed during a group capture (2026-09-09): stock groups get their stock KeyBinding primary set to None (same slot OnCaptured writes), extended groups drop their keymap entry.</summary>
+		/// <summary>Delete during a group capture: stock groups get their KeyBinding primary set to None, extended groups drop their keymap entry.</summary>
 		private void OnBindCleared(int group, bool isStock)
 		{
 			if (isStock)
@@ -2098,10 +1948,9 @@ namespace KRILL.UI
 				RebuildContent();
 			}
 			FollowAxisValue();
-			// Must drive KrillCapture ourselves: it's the only thing that ticks it in
-			// the editor scene (KrillInputManager is flight-only). Redundant-but-safe
-			// in flight, where KrillInputManager also ticks it (KrillCapture.Tick is
-			// frame-guarded against double-driving).
+			// The window must drive KrillCapture itself: nothing else ticks it in the
+			// editor scene. Harmless in flight, where KrillInputManager ticks it too —
+			// KrillCapture.Tick is frame-guarded against double-driving.
 			if (KrillCapture.NeedsTick)
 			{
 				KrillCapture.Tick();

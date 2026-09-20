@@ -4,47 +4,13 @@ using UnityEngine;
 namespace KRILL
 {
 	/// <summary>
-	/// The extended-axis engine (2026-09-09, notes/axes-design.md A4): once per
-	/// physics tick, resolves the level of every extended axis of the active
-	/// vessel for its active set and writes it into the assigned part fields —
-	/// the analog twin of KrillActivation, and the one place that touches a
-	/// BaseAxisField. Runs from KrillInputManager.FixedUpdate because stock's
-	/// own incremental mode integrates with TimeWarp.fixedDeltaTime (decompiled
-	/// BaseAxisField.IncrementAxis) and this reproduces that formula exactly.
-	///
-	/// Level resolution per (set, axis), first match wins (§11.3: a held key
-	/// wins; on release the axis goes back to whoever owns it):
-	///   a +/- key held (KrillAxisKeys) -> the kind decides (§11.2): Spring ramps
-	///       toward ±1 (KrillAxisSignal, attack from the settings, stock-like
-	///       snap by default), Fixed integrates its persisted value at KeyRate
-	///       and stays there;
-	///   bound to a controller channel  -> KrillAxisKeymap.TryRead (raw channel
-	///       + the global dead zone); Fixed stores it as the persisted value,
-	///       Spring publishes it to KrillAxisSignal;
-	///   unbound                        -> Fixed reads its persisted value (the
-	///       window's slider writes it), Spring reads KrillAxisSignal (slider
-	///       while held, return ramp after) or its rest value.
-	/// Either way KrillQuery.GetAxisState reads the same storage, so readers
-	/// (KRAB, the console) see exactly what the fields receive.
-	///
-	/// Field write, per assignment (user decisions §5, verified §8):
-	///   absolute    -> BaseAxisField.SetAxis(v): -1..1 mapped linearly onto
-	///                  min..max — skipped when the field already sits there;
-	///   incremental -> the field is nudged by v × range × speed × fixedDeltaTime
-	///                  (stock's IncrementAxis formula computed HERE, with KRILL's
-	///                  per-assignment speed, so stock's per-field
-	///                  incrementalSpeedMultiplier is never overwritten),
-	///                  honoring the field's own ignoreIncrementByZero and
-	///                  ignoreClampWhenIncremental flags like stock does.
-	/// Gates: the same career unlock the groups use, and stock's own
-	/// CUSTOM_ACTION_GROUPS input lock (FlightInputHandler applies it to the
-	/// custom axes) minus KRILL's own locks (KrillLocks). Keys have a stricter
-	/// gate than the channel: the typing lock and a running key capture stop
-	/// them, a stick is neither the keyboard nor a candidate.
+	/// The extended-axis engine: every physics tick it resolves the level of each
+	/// extended axis and writes it into the assigned fields — the analog twin of
+	/// KrillActivation, and the one place that touches a BaseAxisField.
 	/// </summary>
 	public static class KrillAxisDriver
 	{
-		/// <summary>Precision mode (CapsLock) divides the Fixed key rate by this; stock has no Fixed-like axis to copy from, the factor is KRILL's.</summary>
+		/// <summary>Precision mode (CapsLock) divides the Fixed key rate by this; stock has no comparable axis, so the factor is KRILL's own.</summary>
 		public const float PrecisionRateFactor = 0.25f;
 
 		private struct Target
@@ -57,8 +23,8 @@ namespace KRILL
 		private static readonly Dictionary<int, List<Target>> byAxis = new Dictionary<int, List<Target>>();
 		private static readonly HashSet<int> axesThisTick = new HashSet<int>();
 		private static readonly List<int> axisList = new List<int>();
-		// Axes a held key was driving last tick (K1): the release edge is what
-		// starts a Spring's return when no channel re-asserts the level.
+		// Axes a held key was driving last tick: the release edge is what starts a
+		// Spring's return when no channel re-asserts the level.
 		private static readonly HashSet<int> keyDriven = new HashSet<int>();
 
 		public static void Step(Vessel v, ModuleKrill root, int set)
@@ -79,9 +45,8 @@ namespace KRILL
 			{
 				axesThisTick.Add(axis);
 			}
-			// Bound axes (channel or keys) with no field assigned still get their
-			// level refreshed: readers (KRAB, the console) want it regardless of
-			// what it drives.
+			// Bound axes with no field assigned still get their level refreshed:
+			// readers want it regardless of what it drives.
 			foreach (KeyValuePair<int, AxisBinding_Single> kv in KrillAxisKeymap.Binds)
 			{
 				axesThisTick.Add(kv.Key);
@@ -108,7 +73,7 @@ namespace KRILL
 			}
 		}
 
-		/// <summary>Groups the active set's axis assignments of every part by axis number. Rebuilt each tick: cheap (a few list scans) and never stale after docking, part loss or a set switch.</summary>
+		/// <summary>Groups the set's axis assignments by axis number. Rebuilt each tick: cheap, and never stale after docking or a set switch.</summary>
 		private static void CollectTargets(Vessel v, int set)
 		{
 			foreach (KeyValuePair<int, List<Target>> kv in byAxis)
@@ -141,7 +106,11 @@ namespace KRILL
 			}
 		}
 
-		/// <summary>The axis's current -1..1 level, stored where KrillQuery.GetAxisState reads it (see class doc).</summary>
+		/// <summary>
+		/// The axis's current -1..1 level, stored where KrillQuery.GetAxisState reads
+		/// it. A held +/- key wins, then the controller channel, then the axis's own
+		/// memory (a Fixed value, a Spring's live signal or its rest).
+		/// </summary>
 		private static float ResolveLevel(Vessel v, ModuleKrill root, int set, int axis, bool keysAllowed, float dt)
 		{
 			KrillAxisKind kind = root.GetAxisKind(set, axis);
@@ -157,10 +126,9 @@ namespace KRILL
 			{
 				if (kind == KrillAxisKind.Fixed)
 				{
-					// Data write without MarkDirty on purpose: the [SerializeField]
-					// mirror only matters for editor clones, while OnSave already
-					// serializes `Data` itself — re-serializing the whole payload to
-					// a string 50 times a second while a throttle moves would be waste.
+					// No MarkDirty on purpose: the mirror only matters for editor clones and
+					// OnSave serializes Data itself, so re-stringifying it 50 times a second
+					// while a throttle moves would be pure waste.
 					root.Data.SetAxisValue(set, axis, read);
 				}
 				else
@@ -183,14 +151,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Level while a +/- key is held (§11.2, the kind decides). Fixed: the
-		/// persisted value integrates at KeyRate (full-scale units per physics
-		/// second, precision mode slows it) and stays — same MarkDirty-free write
-		/// as the channel path. Spring: a KrillAxisSignal ramp toward ±1. Stock's
-		/// ProcessAxis SNAPS its custom axes to ±1 while a key is down and ramps
-		/// only in precision mode, at INPUT_KEYBOARD_SENSIVITITY per second; KRILL
-		/// does the same by default (attack time 0 = infinite speed) and lets the
-		/// settings turn the snap into a ramp outside precision mode.
+		/// Level while a +/- key is held; the kind decides. Fixed integrates its
+		/// persisted value at KeyRate and stays there, Spring ramps toward ±1 at the
+		/// attack from the settings (0 = the instant snap stock's own keys do).
 		/// </summary>
 		private static float KeyLevel(Vessel v, ModuleKrill root, int set, int axis, KrillAxisKind kind, int dir, float dt)
 		{
@@ -224,6 +187,11 @@ namespace KRILL
 			return KrillAxisSignal.TryGet(v, set, axis, out float live) ? live : current;
 		}
 
+		/// <summary>
+		/// Writes one assignment: absolute maps -1..1 onto the field's range,
+		/// incremental nudges it by stock's own formula computed here — never
+		/// IncrementAxis, which would use the field's own speed multiplier.
+		/// </summary>
 		private static void Apply(Target target, float value, float dt)
 		{
 			KrillAxisAssignment a = target.assignment;

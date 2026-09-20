@@ -14,12 +14,9 @@ namespace KRILL
 	}
 
 	/// <summary>
-	/// Toolbar button opening/closing the single KrillWindow (design doc §6: one
-	/// window, no per-scene UI split beyond what the window itself branches on).
-	/// A single class can't carry two [KSPAddon] attributes (AllowMultiple=false),
-	/// so the shared logic lives here and two near-empty subclasses below each
-	/// pick up one scene — a fresh instance (and a fresh ToolbarControl) per scene
-	/// load, a standard ToolbarControl pattern.
+	/// Toolbar button opening/closing the single KrillWindow. [KSPAddon] is not
+	/// AllowMultiple, so the shared logic lives here and one near-empty subclass
+	/// per scene picks it up.
 	/// </summary>
 	public class KrillToolbarApp : MonoBehaviour
 	{
@@ -42,13 +39,8 @@ namespace KRILL
 			UI.KrillWindow.OnClosed = () => toolbarControl.SetFalse(false);
 
 #if KRILL_CONSOLE_PREVIEW
-			// Right-click toggles the flight-only Console (2026-08-30) — kept as
-			// a permanent shortcut, not just a debug aid for the current
-			// geometry test. No-op outside flight (UI.KrillConsole.current is
-			// null there); left-click keeps its existing onTrue/onFalse window
-			// toggle untouched, so a no-op is passed for onLeftClick here.
-			// Preview builds only (see KRILL.csproj): the console is not
-			// finished, a release build has no right-click behavior at all.
+			// Right-click toggles the flight-only Console (no-op outside flight);
+			// left-click keeps the window toggle wired by AddToAllToolbars.
 			toolbarControl.AddLeftRightClickCallbacks(() => { }, UI.KrillConsole.ToggleVisible);
 #endif
 		}

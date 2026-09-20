@@ -6,10 +6,9 @@ using UnityEngine.UI;
 namespace KRILL.UI
 {
 	/// <summary>
-	/// Code-built UGUI factory. Ported from KRAB's KrabUi.cs verbatim (design doc
-	/// §6: KRILL shares KRAB's skin on purpose — same ecosystem, same "feels like
-	/// stock" goal) — palette, metrics and behavior are identical by design, not
-	/// by coincidence; keep the two in sync if the shared look changes.
+	/// Code-built UGUI factory, ported verbatim from KRAB's KrabUi: palette,
+	/// metrics and behavior are identical on purpose, so keep the two in sync if
+	/// the shared look ever changes.
 	/// </summary>
 	public static class KrillUi
 	{
@@ -133,22 +132,9 @@ namespace KRILL.UI
 		}
 
 		/// <summary>
-		/// Same visual as TextButton, but drives separate press/release callbacks
-		/// (PointerDown/PointerUp) instead of a single onClick — for controls that
-		/// must track "held", not "clicked" (Hold-kind groups' Trigger button,
-		/// 2026-08-19). Unity's EventSystem keeps delivering PointerUp to the
-		/// object that received PointerDown even if the cursor has moved off it
-		/// by release time, so a drag-off-then-release still calls onRelease.
-		///
-		/// The release is ALSO guaranteed by the button's own lifecycle
-		/// (HoldTracker.OnDisable, 2026-09-02): if the button is destroyed or
-		/// hidden while pressed — a content rebuild, the window closing, a scene
-		/// change — it releases itself before going away, so a press can never
-		/// be orphaned by losing the object that would have received the
-		/// PointerUp. Same pattern FocusLock/TypingLock below already use for
-		/// their control locks. Still adds a Button (colors only, onClick left
-		/// unwired) purely for the same hover/press visual feedback as every
-		/// other button in this UI.
+		/// Same visual as TextButton but with separate press/release callbacks, for
+		/// controls that track "held". The release is also guaranteed by the button's
+		/// own lifecycle, so a rebuild mid-press can never orphan it.
 		/// </summary>
 		public static void HoldButton(Transform parent, string text, UnityAction onPress, UnityAction onRelease,
 			Color background, Color textColor, int fontSize = 13, float width = 0f, float height = 24f)
@@ -181,7 +167,7 @@ namespace KRILL.UI
 			tracker.onRelease = onRelease;
 		}
 
-		/// <summary>Press/release tracker for HoldButton — see its doc. Left button only, matching Selectable's own press handling on the same object.</summary>
+		/// <summary>Press/release tracker for HoldButton. Left button only, matching Selectable's own press handling on the same object.</summary>
 		private class HoldTracker : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
 		{
 			public UnityAction onPress;
@@ -223,13 +209,9 @@ namespace KRILL.UI
 		}
 
 		/// <summary>
-		/// Horizontal slider in the shared skin (2026-09-09, for the axis footer):
-		/// inset track, green fill from the left, tan handle. `onChanged` fires on
-		/// every player-driven change (never on SetValueWithoutNotify, which the
-		/// window uses to follow a controller). `onPress`/`onRelease` track the
-		/// mouse on the whole control so a Spring axis can start its return ramp
-		/// when the player lets go — same HoldTracker as HoldButton, same
-		/// self-release on disable.
+		/// Horizontal slider in the shared skin. `onChanged` fires on every
+		/// player-driven change, never on SetValueWithoutNotify; `onPress`/`onRelease`
+		/// track the mouse so a Spring axis can start its return ramp on release.
 		/// </summary>
 		public static Slider Slider(Transform parent, float min, float max, float value, float width, float height,
 			UnityAction<float> onChanged, UnityAction onPress = null, UnityAction onRelease = null, bool readOnly = false)
@@ -240,10 +222,8 @@ namespace KRILL.UI
 			GameObject fillArea = Go("FillArea", root);
 			RectTransform fillAreaRect = (RectTransform)fillArea.transform;
 			Stretch(fillAreaRect, 2f);
-			// A read-only slider (it follows a controller, the mouse can't move it)
-			// is drawn in the muted greys of the rest of the skin, not just tinted
-			// by Selectable's disabledColor — that only touches the handle and left
-			// the green fill looking live (2026-09-11, A4.11).
+			// A read-only slider is drawn in the muted greys of the rest of the skin:
+			// Selectable's disabledColor only tints the handle and leaves the fill live.
 			Image fill = Panel_("Fill", fillArea.transform, readOnly ? Faint : Green);
 			fill.raycastTarget = false;
 			Stretch(fill.rectTransform);
@@ -311,14 +291,9 @@ namespace KRILL.UI
 		}
 
 		/// <summary>
-		/// Keeps a label inside the rect the layout gives it (in-game report,
-		/// 2026-09-11: a long bind description in the footer ran past the window
-		/// edge). Wrap breaks the line at the rect width and Truncate drops every
-		/// line that does not fit the rect height, so a one-line label shows as
-		/// much as fits and nothing beyond. Pair it with a LayoutElement whose
-		/// preferredWidth is 0 (Size(go, 0f, h, 1f)): a Text reports its FULL
-		/// unwrapped width as preferred, and a HorizontalLayoutGroup would otherwise
-		/// shrink the sibling buttons to make room for it before it even overflowed.
+		/// Keeps a label inside the rect the layout gives it. Pair it with a
+		/// LayoutElement whose preferredWidth is 0: a Text reports its full unwrapped
+		/// width as preferred, and the layout would shrink its siblings to fit it.
 		/// </summary>
 		public static void ClipText(Text label)
 		{
@@ -411,7 +386,7 @@ namespace KRILL.UI
 			return field;
 		}
 
-		/// <summary>Tiny square icon button. Stick to glyphs from the core Arrows block (U+2190-21FF) or Dingbats — the dynamic OS font does not cover Supplemental Arrows-A.</summary>
+		/// <summary>Tiny square icon button. Stick to core Arrows (U+2190-21FF) or Dingbats: the dynamic OS font has no Supplemental Arrows-A.</summary>
 		public static Button IconButton(Transform parent, string glyph, UnityAction onClick,
 			Color textColor, float size = 20f)
 		{

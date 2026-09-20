@@ -56,6 +56,7 @@ A few tested ways around it, using your device's own mapping software:
 - A Hold-kind group interrupted by a save (quicksave, or leaving to the Space Center while still pressing) reads as off after loading, but the part itself keeps whatever state the save captured (the same thing happens with stock's Brakes held through a quicksave). The next press resyncs it.
 - No integration into the stock Action Groups app or the editor's Actions screen (yet?): extended groups and axes are managed entirely from KRILL's own window.
 - The +/- keys of the stock custom axes A1-A4 are shown in the KRILL window but are still captured in stock's own Input settings screen: KRILL captures their channel, not (yet) their keys. There is no mouse-wheel "stepped" source for any axis.
+- A **Spring** axis's live position is never saved: after a load it sits at its rest position until the stick moves. A **Fixed** axis's value is saved with the craft.
 - While the mouse is over the KRILL window, stock's own custom axes 1-4 stop reading the controller (stock pauses them whenever a UI holds the input lock, its own Input screen included); KRILL's extended axes keep following.
 - Not a KRILL bug, but easy to blame on it: in the stock editor's axis options, the **speed slider can show absurd percentages** (e.g. 66600 %) on systems whose locale uses a comma as decimal separator. Stock parses its own speed table with the system culture. KRILL's own speed steps are stored as numbers and are unaffected.
 

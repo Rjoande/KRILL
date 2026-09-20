@@ -4,33 +4,14 @@ using UnityEngine;
 namespace KRILL
 {
 	/// <summary>
-	/// "Move it now" axis capture (2026-09-08, notes/axes-design.md A3) — the
-	/// analog twin of KrillCapture, and the exact algorithm stock's own Input
-	/// settings screen uses (decompiled SettingsInputBinding/InputSettings):
-	/// sample every joystick channel Unity exposes when the capture starts, then
-	/// the first channel that moves more than 0.5 from its baseline wins. The
-	/// baseline makes a stick already resting off-center (a throttle parked at
-	/// -1, a STECS axis returning to full scale) capturable without a false
-	/// trigger, and the wide threshold ignores noise and lightly touched axes.
-	///
-	/// Keyboard and mouse are never candidates (only joyN.M channels are
-	/// scanned — user decision: an axis comes from a controller or from the
-	/// console, nothing else). Two keys are meaningful DURING a capture only:
-	/// Escape cancels, Delete clears the axis's existing bind (an unbound axis
-	/// is the one the console may drive by mouse, so "unbind" is a real
-	/// operation here; since 2026-09-09 the key capture offers the same).
-	///
-	/// Same driver/lock/Escape mechanics as KrillCapture: ticked by KrillWindow
-	/// (any scene) and KrillInputManager (flight), frame-guarded so both may
-	/// tick in one frame; ALLBUTCAMERAS lock while pending; after an Escape
-	/// cancel the lock stays until Escape's key-up is observed (PauseMenu opens
-	/// on key-UP and only then checks the lock — see KrillCapture for the story).
+	/// "Move it now" axis capture, the analog twin of KrillCapture and the same
+	/// algorithm stock's input screen uses: baseline every joyN.M channel on Begin,
+	/// then the first to move past the threshold wins. Escape cancels, Delete unbinds.
 	/// </summary>
 	public static class KrillAxisCapture
 	{
-		// Unity's InputManager as shipped with KSP defines joy0..joy10, each with
-		// axes 0..19 (verified in globalgamemanagers, 2026-09-07) — stock scans
-		// 20 per device too (axisCount = 20 in its settings screens).
+		// KSP's Unity InputManager defines joy0..joy10 with axes 0..19; stock scans
+		// the same 20 channels per device.
 		private const int Devices = 11;
 		private const int AxesPerDevice = 20;
 		private const float Threshold = 0.5f;
@@ -67,7 +48,7 @@ namespace KRILL
 			InputLockManager.SetControlLock(ControlTypes.ALLBUTCAMERAS, LockId);
 		}
 
-		/// <summary>Escape cancel: keeps the lock until Escape's key-up, see class doc.</summary>
+		/// <summary>Escape cancel: the lock is held until Escape's key-up, or the pause menu (which opens on key-UP) would slip through.</summary>
 		public static void Cancel()
 		{
 			if (!IsCapturing)
@@ -157,7 +138,7 @@ namespace KRILL
 			return "joy" + device + "." + axis;
 		}
 
-		/// <summary>Device name exactly as stock derives it (trimmed Unity name, or "Joystick N" for a nameless device) — it is the key GameSettings.INPUT_DEVICES resolves at load time, so it must match stock's spelling.</summary>
+		/// <summary>Device name exactly as stock derives it: GameSettings.INPUT_DEVICES resolves on it at load time, so the spelling must match.</summary>
 		private static string DeviceName(int device)
 		{
 			string[] names = Input.GetJoystickNames();

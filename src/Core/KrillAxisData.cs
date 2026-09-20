@@ -4,15 +4,9 @@ using UnityEngine;
 namespace KRILL
 {
 	/// <summary>
-	/// How an extended axis behaves once the player lets go of it — the analog
-	/// twin of KrillActuationKind (notes/axes-design.md §2, 2026-09-07):
-	///   Spring <-> Hold  : released, it returns to its rest value by itself;
-	///   Fixed  <-> Toggle: stays where it was put.
-	/// With a physical controller the kind is only a reminder (the hardware
-	/// itself springs back or not, KRILL just reads the channel); driven from
-	/// the console by mouse it becomes functional — it decides what the on-screen
-	/// control does after mouse-up. There is no Pulse twin: a momentary contact
-	/// has no analog meaning.
+	/// How an extended axis behaves once the player lets go: Spring returns to its
+	/// rest value, Fixed stays put. With a controller this is only a reminder; from
+	/// the console by mouse it decides what happens on mouse-up. No Pulse twin.
 	/// </summary>
 	public enum KrillAxisKind
 	{
@@ -24,10 +18,9 @@ namespace KRILL
 	public static class KrillAxes
 	{
 		/// <summary>
-		/// Axes 1..4 mirror the four stock custom axis groups (KSPAxisGroup.Custom01..04,
-		/// managed by stock's own axis-group UI, shown by KRILL for name/bind only).
-		/// Extended, KRILL-owned axes start here — same "virtual, beside a full
-		/// stock bitmask" scheme as extended groups 11+.
+		/// Axes 1..4 mirror the four stock custom axis groups, which KRILL only shows;
+		/// KRILL-owned axes start here, the same "virtual beside a full stock bitmask"
+		/// scheme as extended groups 11+.
 		/// </summary>
 		public const int FirstExtended = 5;
 
@@ -37,24 +30,21 @@ namespace KRILL
 		public const int RestMax = 1;
 
 		/// <summary>
-		/// Kind of an axis nobody has touched yet (user decision 2026-09-19): Fixed,
-		/// because the footer's four-state cycle is Fixed -> Spring 0 -> Spring -1 ->
-		/// Spring +1, so from Fixed any Spring is one click away while from Spring 0
-		/// reaching Fixed took three. Applies wherever no KRILL_AXIS record exists.
+		/// Kind of an axis nobody has touched yet. Fixed, because the footer cycles
+		/// Fixed -> Spring 0 -> Spring -1 -> Spring +1: from Fixed any Spring is one
+		/// click away. Applies wherever no KRILL_AXIS record exists.
 		/// </summary>
 		public const KrillAxisKind DefaultKind = KrillAxisKind.Fixed;
 
 		/// <summary>
-		/// Incremental-mode speed steps offered by the KRILL window, as a fraction
-		/// of the field's full range per second — a hand-picked subset of stock's
-		/// 18-value AXIS_INCREMENTAL_SPEED_MULTIPLIER_STORAGE list (user decision
-		/// 2026-09-07: 20/50/100/200/300 %/s, default 20 like stock). Persisted as
-		/// the VALUE, not an index, so this table can change without breaking craft.
+		/// Incremental-mode speed steps, as a fraction of the field's full range per
+		/// second: a hand-picked subset of stock's own list. Persisted as the VALUE,
+		/// not an index, so this table can change without breaking existing craft.
 		/// </summary>
 		public static readonly float[] SpeedSteps = { 0.2f, 0.5f, 1f, 2f, 3f };
 		public const float DefaultSpeed = 0.2f;
 
-		/// <summary>Next entry of SpeedSteps after `current` (wrapping), for the window's cycle button. A value not in the table (older craft, edited file) restarts from the first step.</summary>
+		/// <summary>Next entry of SpeedSteps after `current`, wrapping. A value not in the table restarts from the first step.</summary>
 		public static float NextSpeed(float current)
 		{
 			for (int i = 0; i < SpeedSteps.Length; i++)
@@ -74,10 +64,9 @@ namespace KRILL
 	}
 
 	/// <summary>
-	/// Identity of a single BaseAxisField on a known part — the axis twin of
-	/// KrillActionRef, same rules: the part is implicit (the ref lives inside that
-	/// part's ModuleKrill), the field is module name + occurrence among same-named
-	/// modules + field name. NEVER the module's absolute index (the AGExt defect).
+	/// Identity of a BaseAxisField on a known part, the axis twin of KrillActionRef:
+	/// module name + occurrence among same-named modules + field name, never the
+	/// module's absolute index.
 	/// </summary>
 	public class KrillFieldRef
 	{
@@ -116,12 +105,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Resolve back to the live field on the given part. Exact match first; if
-		/// that module no longer carries the field (a mod update changed the part),
-		/// fall back to any same-named module that does, logging the drift instead
-		/// of silently losing the assignment — same policy as KrillActionRef.Resolve.
-		/// Returns the field whether or not it is currently usable (see IsUsable):
-		/// the caller decides what an inactive field means for it.
+		/// Resolve back to the live field: exact match, else any same-named module that
+		/// still carries it, logging the drift. Returns the field whether or not it is
+		/// currently usable — what an inactive field means is the caller's business.
 		/// </summary>
 		public BaseAxisField Resolve(Part part)
 		{
@@ -161,11 +147,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Stock's own eligibility filter for the axis-group assignment lists
-		/// (BaseAxisField.CreateAxisList, decompiled 2026-09-07): the owning module
-		/// is enabled, the field is a float, and the module hasn't opted it out via
-		/// BaseAxisField.active (ModuleAeroSurface hides authorityLimiter/deployAngle
-		/// that way, ModuleLight toggles its color fields with the light mode).
+		/// Stock's own eligibility filter for the axis-group lists: enabled module,
+		/// float field, and not opted out through BaseAxisField.active (which some
+		/// modules use to hide fields that make no sense in their current mode).
 		/// </summary>
 		public static bool IsUsable(BaseAxisField f)
 		{
@@ -173,7 +157,7 @@ namespace KRILL
 			return pm != null && pm.isEnabled && f.active && f.FieldInfo != null && f.FieldInfo.FieldType == typeof(float);
 		}
 
-		/// <summary>Stock's default control mode for this field (KSPAxisField.axisMode) — what a fresh KRILL assignment starts with, like stock's own editor does.</summary>
+		/// <summary>Stock's default control mode for this field, which a fresh KRILL assignment starts with just like stock's own editor.</summary>
 		public static bool DefaultIncremental(BaseAxisField f)
 		{
 			KSPAxisField attr = f != null ? f.Attribute as KSPAxisField : null;
@@ -208,12 +192,9 @@ namespace KRILL
 	}
 
 	/// <summary>
-	/// One extended-axis membership of one axis field of the owning part, plus the
-	/// per-assignment options stock also keeps per field (decompiled BaseAxisField
-	/// 2026-09-07: inversion and absolute/incremental mode per set, speed
-	/// multiplier per field). KRILL keeps all three per (set, axis, field) — its
-	/// own data, never stock's AXISGROUPS node. Sets are independent, like every
-	/// other KRILL assignment.
+	/// One extended-axis membership of one axis field, plus the options stock also
+	/// keeps (inversion, absolute/incremental, speed). KRILL keeps all three per
+	/// (set, axis, field) in its own data, never in stock's AXISGROUPS node.
 	/// </summary>
 	public class KrillAxisAssignment
 	{
@@ -230,10 +211,10 @@ namespace KRILL
 		/// <summary>Negate the axis value before applying it to this field.</summary>
 		public bool inverted;
 
-		/// <summary>true: the value is a RATE that nudges the field each physics tick; false: the value maps linearly onto min..max (BaseAxisField.SetAxis).</summary>
+		/// <summary>true: the value is a RATE nudging the field each physics tick; false: it maps linearly onto min..max.</summary>
 		public bool incremental;
 
-		/// <summary>Incremental mode only: fraction of the field's full range moved per second at full deflection (KrillAxes.SpeedSteps).</summary>
+		/// <summary>Incremental mode only: fraction of the field's full range moved per second at full deflection.</summary>
 		public float speed = KrillAxes.DefaultSpeed;
 
 		public void Save(ConfigNode node)
@@ -275,19 +256,9 @@ namespace KRILL
 	}
 
 	/// <summary>
-	/// Everything about one (set, axis) that is NOT an assignment: kind, rest
-	/// value, the persisted value of a Fixed axis, and the (silent) indicator
-	/// type. One sparse node per pair, by convention on the vessel ROOT part's
-	/// ModuleKrill only (same convention as KrillGroupKind/Toggle/Signal). Absent
-	/// = Spring, rest 0, value 0, Info. Independent per set, no inheritance.
-	///
-	/// `value` is the persisted level of a FIXED axis ("where the player left
-	/// it", the analog of KrillGroupSignal) and is the only thing here the
-	/// engine writes at runtime; a Spring axis never persists its level (it
-	/// restarts at `rest`, like Hold restarts at 0 — a quicksave mid-deflection
-	/// must not come back as a stuck axis). `indicator` is persisted but has no
-	/// UI and no consumer yet (user decision 2026-09-07: keep the slot so the
-	/// persistence needn't be redone if the console ever colors axes).
+	/// Everything about one (set, axis) that is not an assignment: kind, rest, the
+	/// persisted level of a Fixed axis and a silent indicator slot. One sparse node
+	/// per pair on the root part; a Spring never persists its level.
 	/// </summary>
 	public class KrillAxisSetting
 	{
@@ -310,7 +281,7 @@ namespace KRILL
 			node.AddValue("indicator", indicator.ToString());
 		}
 
-		/// <summary>Tolerant: only set/axis are required; every option falls back to its default individually, and out-of-range rest/value are clamped rather than dropped.</summary>
+		/// <summary>Tolerant: only set/axis are required, each option falls back to its default, and out-of-range rest/value are clamped, not dropped.</summary>
 		public static KrillAxisSetting Load(ConfigNode node)
 		{
 			KrillAxisSetting s = new KrillAxisSetting();

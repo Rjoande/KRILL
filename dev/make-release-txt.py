@@ -1,19 +1,22 @@
 """Generates the plain-text README.txt and LICENSE.txt that ship INSIDE the
-payload (GameData/KRILL/), from README_release.md and LICENSE at the repo
-root (2026-09-20). Plain text on purpose: a player opening the mod folder
-gets something Notepad renders cleanly, no Markdown syntax, no links to
-files that only exist in the repo.
+payload (GameData/KRILL/), from README.md and LICENSE at the repo root.
+Plain text on purpose: a player opening the mod folder gets something Notepad
+renders cleanly, no Markdown syntax, no links to files that only exist in the
+repo.
 
 Conversion rules (Markdown -> text):
   - "# Title" -> title line + "=" underline; "## Section" -> section + "-"
   - **bold**, *italic*, `code` markers stripped
+  - image lines dropped, [text](http...) -> "text (http...)", links to files
+    in the repo -> just their text
+  - PAYLOAD_EDITS below rewrites the few sentences that only make sense to
+    someone reading the repo rather than the unzipped mod folder
   - paragraphs and bullets re-wrapped at WIDTH columns, bullets with a
     hanging indent (nested bullets keep their extra indent)
   - CRLF line endings, UTF-8 without BOM (Windows Notepad friendly)
 
 Run from anywhere:  python dev/make-release-txt.py
-Re-run after every README_release.md change (CLAUDE.md: keep README,
-README_release and this output aligned).
+Re-run after every README.md change.
 """
 import io
 import os
@@ -24,8 +27,30 @@ WIDTH = 78
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PAYLOAD = os.path.join(ROOT, "GameData", "KRILL")
 
+# Sentences that address a reader of the GitHub page and have to address a
+# player who unzipped the mod instead. Applied to the source before anything
+# else; a miss here is silent, so keep them verbatim copies of README.md.
+PAYLOAD_EDITS = [
+    ("Copy the contents of this repository into your `GameData` folder",
+     "Extract this archive's contents into your `GameData` folder"),
+    # Next to this file the licence is LICENSE.txt, not the repo's LICENSE.
+    ("[MIT](LICENSE).", "MIT. See LICENSE.txt."),
+]
+
+IMAGE_LINE = re.compile(r"^\s*!\[[^\]]*\]\([^)]*\)\s*$")
+LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+
+
+def delink(text):
+    """[text](http://x) -> "text (http://x)"; a link to a repo file -> text."""
+    def one(m):
+        label, target = m.group(1), m.group(2)
+        return "%s (%s)" % (label, target) if target.startswith("http") else label
+    return LINK.sub(one, text)
+
 
 def strip_inline(text):
+    text = delink(text)
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     text = re.sub(r"(?<!\w)\*(?!\s)(.+?)(?<!\s)\*(?!\w)", r"\1", text)
     text = text.replace("`", "")
@@ -55,7 +80,7 @@ def convert_readme(md):
     para = []
     for raw in md.splitlines():
         line = raw.rstrip()
-        if not line.strip():
+        if not line.strip() or IMAGE_LINE.match(line):
             flush_para(out, para)
             continue
         if line.startswith("# "):
@@ -92,9 +117,14 @@ def write_crlf(path, lines):
 
 
 def main():
-    with io.open(os.path.join(ROOT, "README_release.md"), encoding="utf-8") as f:
-        # Inside the payload the licence file is LICENSE.txt, next to this one.
-        readme = convert_readme(f.read().replace("See LICENSE.", "See LICENSE.txt."))
+    with io.open(os.path.join(ROOT, "README.md"), encoding="utf-8") as f:
+        md = f.read()
+    for old, new in PAYLOAD_EDITS:
+        if old not in md:
+            raise SystemExit("make-release-txt: README.md no longer contains %r "
+                             "- update PAYLOAD_EDITS" % old)
+        md = md.replace(old, new)
+    readme = convert_readme(md)
     with io.open(os.path.join(ROOT, "LICENSE"), encoding="utf-8") as f:
         license_lines = [l.rstrip("\r\n") for l in f.read().splitlines()]
     write_crlf(os.path.join(PAYLOAD, "README.txt"), readme)

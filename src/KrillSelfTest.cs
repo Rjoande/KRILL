@@ -4,16 +4,9 @@ using UnityEngine;
 namespace KRILL
 {
 	/// <summary>
-	/// In-game data self-tests, compiled only with -p:KrillSelfTest=true (see
-	/// KRILL.csproj). KSP's ConfigNode can't be exercised outside the game, so
-	/// the round-trip checks run once at the main menu and report to KSP.log as
-	/// "[KRILL][selftest] ..." lines — grep for FAIL. Pure data, no scene, no
-	/// vessel, no UI: this replaces the PAW debug events removed in 2026-07-20
-	/// for the one job they did that a window can't (exercising the loader on
-	/// deliberately malformed input).
-	///
-	/// Currently covers the extended-axis payload (2026-09-07, A1); group data
-	/// was validated the same way back in M1 and has stayed shape-stable since.
+	/// In-game data self-tests, compiled only with -p:KrillSelfTest=true. ConfigNode
+	/// can't be exercised outside the game, so these run once at the main menu and
+	/// report as "[KRILL][selftest] ..." lines in KSP.log — grep for FAIL.
 	/// </summary>
 	[KSPAddon(KSPAddon.Startup.MainMenu, true)]
 	public class KrillSelfTest : MonoBehaviour

@@ -3,15 +3,9 @@ using UnityEngine;
 namespace KRILL
 {
 	/// <summary>
-	/// Identity of a single BaseAction on a known part.
-	///
-	/// The part itself is implicit: refs are stored inside that part's ModuleKrill,
-	/// so the part identity travels with the part (this is what makes the scheme
-	/// robust — no global part indices). Within the part, an action is identified by
-	/// module name + occurrence index among same-named modules + action name.
-	/// NEVER by the module's absolute position in the module list: that is the
-	/// historical AGExt defect (pmIndex) that silently loses assignments whenever a
-	/// mod update inserts or reorders modules.
+	/// Identity of a BaseAction on a known part: module name + occurrence among
+	/// same-named modules + action name. The part is implicit (the ref lives in its
+	/// ModuleKrill). Never an absolute module index — that is AGExt's old defect.
 	/// </summary>
 	public class KrillActionRef
 	{
@@ -28,13 +22,9 @@ namespace KRILL
 		public const string NodeName = "KRILL_ACTION_REF";
 
 		/// <summary>
-		/// Build a ref from a live action, or null if the action has no resolvable
-		/// owning module. Most actions reached via a PartModule's own .Actions list
-		/// always have one, but actions reached via the part-level aggregate
-		/// Part.Actions can carry a listParent with a null .module (no single owning
-		/// module) — callers must not assume this always succeeds. Confirmed the
-		/// hard way: a structural part's action list produced exactly this case,
-		/// crashing the M1 self-test (NRE inside this method) before this guard.
+		/// Build a ref from a live action, or null if it has no resolvable owning
+		/// module: actions reached through the part-level aggregate Part.Actions can
+		/// carry a listParent with a null .module, so callers must check.
 		/// </summary>
 		public static KrillActionRef FromAction(BaseAction ba)
 		{
@@ -67,10 +57,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Resolve back to a live BaseAction on the given part. Exact match first
-		/// (module name + occurrence); if that module no longer has the action (a mod
-		/// update changed the part), fall back to any same-named module that has it,
-		/// logging the drift instead of silently losing the assignment.
+		/// Resolve back to a live BaseAction: exact match on module name + occurrence,
+		/// else any same-named module that still has the action, logging the drift
+		/// instead of silently losing the assignment.
 		/// </summary>
 		public BaseAction Resolve(Part part)
 		{

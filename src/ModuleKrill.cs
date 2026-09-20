@@ -3,22 +3,9 @@ using UnityEngine;
 namespace KRILL
 {
 	/// <summary>
-	/// The per-part data carrier, attached to every part by Config/KRILL.cfg
-	/// (mirroring how stock persists action assignments inside each part's ACTIONS
-	/// nodes, which is what lets assignments travel with craft files). Completely
-	/// inert unless the part actually holds KRILL data: no persistent placeholder
-	/// fields, no per-frame work.
-	///
-	/// Persistence rules (design doc §5):
-	/// - payload lives in KRILL_ACTION / KRILL_NAME child nodes of this module;
-	/// - a [SerializeField] string mirror guards against the editor-clone trap
-	///   (clones never run OnLoad) and against OnSave running before OnLoad;
-	/// - loads are tolerant: malformed nodes are dropped with a log line.
-	///
-	/// 2026-07-20: the four debug PAW events (self-test/write sample/dump/clear)
-	/// that made M1 testable before any UI existed, and the debugMode flag that
-	/// gated them (Test/KrillDebug.cfg), were removed on request now that the real
-	/// KRILL window covers the same ground.
+	/// The per-part data carrier attached to every part by Config/KRILL.cfg, so
+	/// assignments travel with the craft file. Inert unless the part holds KRILL
+	/// data; a [SerializeField] mirror covers editor clones, which never run OnLoad.
 	/// </summary>
 	public class ModuleKrill : PartModule
 	{
@@ -44,11 +31,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Direction bit — which of Activate/Deactivate the next Fire sends
-		/// (design doc §5: by convention read/written on the vessel ROOT part
-		/// only — callers are responsible for calling FindModuleImplementing on
-		/// vessel.rootPart before using these). Private bookkeeping, not a state
-		/// reading: see KrillGroupToggle.
+		/// Direction bit — which of Activate/Deactivate the next Fire sends. Private
+		/// bookkeeping, not a state reading (see KrillGroupToggle). Like every label
+		/// below, by convention read and written on the vessel ROOT part only.
 		/// </summary>
 		public bool GetToggleState(int set, int group)
 		{
@@ -62,10 +47,8 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Persisted signal of a Toggle-kind group (2026-09-02) — the 0/1 readers
-		/// see for that kind, flipped by KrillActivation.Fire and forced by the
-		/// window's State button. Independent of the direction bit above. Same
-		/// root-part convention.
+		/// Persisted signal of a Toggle-kind group: the 0/1 readers see, flipped by
+		/// Fire and forced by the window's State button. Independent of the bit above.
 		/// </summary>
 		public bool GetToggleSignal(int set, int group)
 		{
@@ -78,11 +61,7 @@ namespace KRILL
 			MarkDirty();
 		}
 
-		/// <summary>
-		/// Actuation kind label (2026-08-19 design discussion) — whether the toggle
-		/// state above is meant to be trusted as real informational state by
-		/// external readers. Same root-part convention as the toggle state itself.
-		/// </summary>
+		/// <summary>Actuation kind: whether the toggle state above is meant to be trusted as real state by external readers.</summary>
 		public KrillActuationKind GetActuationKind(int set, int group)
 		{
 			return Data.GetKind(set, group);
@@ -94,11 +73,7 @@ namespace KRILL
 			MarkDirty();
 		}
 
-		/// <summary>
-		/// Console severity label (2026-08-24 design discussion, "console" name settled 2026-08-27) — purely cosmetic, no
-		/// effect on activation. Same root-part convention as the other per-group
-		/// labels; unlike actuation kind, valid on stock groups (1..10) too.
-		/// </summary>
+		/// <summary>Console severity label: purely cosmetic, and unlike the actuation kind it is valid on stock groups 1-10 too.</summary>
 		public KrillIndicatorType GetIndicatorType(int set, int group)
 		{
 			return Data.GetIndicatorType(set, group);
@@ -110,11 +85,7 @@ namespace KRILL
 			MarkDirty();
 		}
 
-		/// <summary>
-		/// Extended-axis settings (2026-09-07, notes/axes-design.md) — kind, rest,
-		/// the persisted level of a Fixed axis, and the silent indicator slot. Same
-		/// root-part convention as every other per-(set, number) label above.
-		/// </summary>
+		/// <summary>Extended-axis settings: kind, rest, the persisted level of a Fixed axis, and the silent indicator slot.</summary>
 		public KrillAxisKind GetAxisKind(int set, int axis)
 		{
 			return Data.GetAxisKind(set, axis);
@@ -187,8 +158,8 @@ namespace KRILL
 
 		public override void OnStart(StartState state)
 		{
-			// Loads dataBackup for editor clones (see class doc — they never run
-			// OnLoad), harmless no-op otherwise since OnLoad already ran first.
+			// Loads dataBackup for editor clones, which never run OnLoad; a no-op
+			// otherwise, since OnLoad has already run.
 			EnsureLoaded();
 		}
 	}

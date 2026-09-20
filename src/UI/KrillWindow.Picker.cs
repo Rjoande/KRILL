@@ -7,20 +7,9 @@ using UnityEngine.UI;
 namespace KRILL.UI
 {
 	/// <summary>
-	/// Two independent, decoupled steps (2026-07-18 redesign — M3's first pass
-	/// combined them into one continuous flow):
-	///
-	/// PickingPart: the KAL-style scene-pick gesture (hover highlight, click to
-	/// select — ported from KRAB's KrabEditorWindow.HandlePartPicking, same
-	/// mouse-up-confirms fix: the mouse button is still physically down for a few
-	/// frames after GetMouseButtonDown, and the editor's own part-drag would
-	/// otherwise grab the part in that unlocked window). Ends by calling
-	/// SelectPart — it does NOT chain into an action list; "+Part" only picks a
-	/// part, nothing is persisted yet.
-	///
-	/// PickingAction: a plain list of the ALREADY-selected part's actions,
-	/// entered directly via "+Action" — no scene interaction. Persists a real
-	/// KrillAssignment only once the player actually picks one.
+	/// Two independent steps. PickingPart is the KAL-style scene gesture and only
+	/// selects a part — nothing is persisted. PickingAction lists the selected
+	/// part's actions or axis fields, and writes a real assignment on pick.
 	/// </summary>
 	public partial class KrillWindow
 	{
@@ -33,17 +22,9 @@ namespace KRILL.UI
 
 		private const string PickLockId = "KRILL_WINDOW_PICK";
 
-		// Same PauseMenu race KrillCapture.Cancel() already works around
-		// (decompiled PauseMenu.cs, 2026-07-11): it opens on Escape's key-UP, not
-		// key-down, and only THEN checks the lock — releasing it on the same frame
-		// Escape-down is detected leaves it gone before that later check runs.
-		// 2026-07-19: this picker had its own separate lock (PickLockId) that never
-		// got the same delay when it was ported into the 3-column redesign, so the
-		// bug reappeared here even though KrillCapture itself was already fixed.
-		// 2026-07-25: that first fix used a FIXED frame count instead of waiting for
-		// the actual key-up — reported broken elsewhere (KrillCapture, same root
-		// cause). Fixed the same way here: wait for the real Input.GetKeyUp(Escape),
-		// MaxUnlockWaitFrames is only a safety net in case it's never observed.
+		// Same pause-menu race KrillCapture works around: the menu opens on Escape's
+		// key-UP and only then checks the lock, so the lock is held until the real
+		// key-up is seen. This cap only covers a key-up that never arrives.
 		private const int MaxUnlockWaitFrames = 180;
 		private int pickUnlockWaitFramesLeft = -1;
 
@@ -64,16 +45,9 @@ namespace KRILL.UI
 		private bool hatchInterfaceDisabledByPicker;
 
 		/// <summary>
-		/// Stock's crew-hatch click (CrewHatchController.LateUpdate, decompiled
-		/// 2026-09-11) never consults InputLockManager — it only checks
-		/// IsPointerOverGameObject, the cursor lock and its own interfaceEnabled
-		/// flag, then spawns the crew/EVA dialog on a left click over an "Airlock"
-		/// collider. So the picker's ALLBUTCAMERAS lock doesn't stop it: picking a
-		/// part by clicking its hatch opened the dialog on top of the pick (A4.14).
-		/// The public DisableInterface/EnableInterface pair is what CameraManager
-		/// itself uses around IVA, so it's used here around the pick — and only
-		/// re-enabled when the camera isn't in IVA/Internal, where stock had
-		/// disabled it for its own reasons and must keep it that way.
+		/// Stock's crew-hatch click never consults InputLockManager, so the picker's
+		/// own lock does not stop it and clicking a hatch would open the crew dialog
+		/// on top. The Disable/EnableInterface pair is the one CameraManager uses.
 		/// </summary>
 		private void SetCrewHatchInterface(bool enabled)
 		{
@@ -109,10 +83,8 @@ namespace KRILL.UI
 			}
 			pendingRemovePart = false;
 			pickerKind = PickerKind.PickingAction;
-			// 2026-07-25: this state never claimed a lock at all before, so Esc
-			// during the action list fell straight through to the stock pause menu
-			// — reusing PickLockId is safe, pickerKind is never PickingPart and
-			// PickingAction at the same time, so the two never fight over it.
+			// The action list needs a lock too, or Esc falls through to the pause menu.
+			// Reusing PickLockId is safe: the two picker kinds are never active at once.
 			InputLockManager.SetControlLock(ControlTypes.ALLBUTCAMERAS, PickLockId);
 			RebuildContent();
 		}
@@ -137,12 +109,9 @@ namespace KRILL.UI
 		}
 
 		/// <summary>
-		/// Un-hovering a part that's ALSO the persistent selection (or one of ITS
-		/// symmetry siblings, 2026-07-27) must restore the group's blue highlight,
-		/// not clear it to default — confirmed the hard way while porting this:
-		/// without the check, mousing over the already-selected part during a fresh
-		/// pick and moving away again silently erased its selection highlight even
-		/// though selectedPart itself never changed.
+		/// Un-hovering a part that is also the persistent selection (or one of its
+		/// symmetry siblings) must restore the blue highlight, not clear it: otherwise
+		/// hovering the selected part during a pick silently erases its highlight.
 		/// </summary>
 		private void RestoreHoverGroupHighlight(Part hovered)
 		{
@@ -157,7 +126,7 @@ namespace KRILL.UI
 			}
 		}
 
-		/// <summary>Cyan preview for the WHOLE prospective symmetry group while picking, not just the part under the cursor — shows what "+ Part" is actually about to select (2026-07-27).</summary>
+		/// <summary>Cyan preview for the whole prospective symmetry group, not just the part under the cursor: it shows what is about to be selected.</summary>
 		private static void ApplyHoverGroupHighlight(Part hovered)
 		{
 			foreach (Part p in KrillQuery.GetSymmetryGroup(hovered))
@@ -168,14 +137,14 @@ namespace KRILL.UI
 			}
 		}
 
-		/// <summary>Button/programmatic cancel (Cancel button, vessel switch, window close): no PauseMenu race to protect against, release the lock now.</summary>
+		/// <summary>Button or programmatic cancel: no pause-menu race to protect against, so the lock goes right away.</summary>
 		private void CancelPicker()
 		{
 			ClearPickerState();
 			RebuildContent();
 		}
 
-		/// <summary>Escape-triggered cancel: keeps the lock until Escape's key-up is observed instead of releasing it immediately — see MaxUnlockWaitFrames.</summary>
+		/// <summary>Escape cancel: the lock is held until Escape's key-up is observed, see MaxUnlockWaitFrames.</summary>
 		private void CancelPickerFromEscape()
 		{
 			pickerKind = PickerKind.None;
@@ -186,7 +155,7 @@ namespace KRILL.UI
 			RebuildContent();
 		}
 
-		/// <summary>Driven from LateUpdate while waiting for Escape's key-up after a cancel (pickerKind is already None, so HandlePartPicking/HandleActionPicking are no longer being called).</summary>
+		/// <summary>Driven from LateUpdate while waiting for Escape's key-up after a cancel, when pickerKind is already None.</summary>
 		private void TickPickUnlockDelay()
 		{
 			pickUnlockWaitFramesLeft--;
@@ -205,7 +174,7 @@ namespace KRILL.UI
 			}
 		}
 
-		/// <summary>Scene-aware "is this part part of the craft we're working on" check (KRAB's own PartOnSameCraft does the identical split).</summary>
+		/// <summary>Scene-aware "does this part belong to the craft being worked on" check.</summary>
 		private static bool PartOnActiveCraft(Part candidate)
 		{
 			if (HighLogic.LoadedSceneIsFlight)
@@ -217,12 +186,9 @@ namespace KRILL.UI
 		}
 
 		/// <summary>
-		/// Confirms on mouse-UP, not mouse-down: the same fix KRAB needed (in-game
-		/// report there, 2026-07-09) for the identical reason — releasing the
-		/// picking lock the instant GetMouseButtonDown fires still leaves the mouse
-		/// button physically held for the remaining frames of that click, long
-		/// enough for the editor's own part-drag (which re-checks its lock every
-		/// frame) to grab the part and start dragging it.
+		/// Confirms on mouse-UP, not mouse-down: the button stays physically held for
+		/// the rest of the click, long enough for the editor's own part-drag — which
+		/// re-checks its lock every frame — to grab the part and start dragging it.
 		/// </summary>
 		private void HandlePartPicking()
 		{
@@ -240,15 +206,13 @@ namespace KRILL.UI
 					pendingPickPart = null;
 					pickerKind = PickerKind.None;
 					InputLockManager.RemoveControlLock(PickLockId);
-					// Re-enabled on the confirming mouse-UP: the click that picked a
-					// hatch is over by now, stock won't see it (A4.14).
+					// Re-enabled on the confirming mouse-UP: the click that picked a hatch is
+					// over by now, so stock will not see it.
 					SetCrewHatchInterface(true);
 					SelectPart(picked);
-					// Chain straight into the action list for a NEWLY picked part
-					// (2026-07-19 user feedback: two separate clicks for the common
-					// case felt like busywork) — re-selecting an ALREADY assigned part
-					// via its column-2 row still just shows its existing actions,
-					// unaffected, that goes through OnPartClicked instead.
+					// A newly picked part chains straight into the action list; re-selecting
+					// an already assigned part from column 2 goes through OnPartClicked and
+					// just shows what it has.
 					StartActionPick();
 				}
 				return;
@@ -259,10 +223,9 @@ namespace KRILL.UI
 			{
 				hovered = null;
 			}
-			// Axis mode (2026-09-07, A2): a part with no usable axis field can't be
-			// picked at all — no highlight, no click — same idea as the action picker
-			// hiding actions that can't be added. Evaluated only on hover CHANGE, not
-			// every frame (the check walks the part's Fields lists).
+			// In axis mode a part with no usable axis field can't be picked at all — no
+			// highlight, no click. Evaluated only when the hover changes: the check
+			// walks the part's Fields lists.
 			if (hovered != null && hovered != hoverPart && selectedAxis.HasValue && !KrillQuery.HasAxisFields(hovered))
 			{
 				hovered = null;
@@ -283,17 +246,9 @@ namespace KRILL.UI
 				&& (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject()))
 			{
 				pendingPickPart = hoverPart;
-				// Must clear the cyan hover highlight HERE, not rely on the mouse-up
-				// confirm path to overwrite it later (bug report
-				// notes/bug-report-picker-highlight-stuck.md, 2026-07-22): if Esc
-				// cancels the pick while the mouse button is still down (between this
-				// down-event and the up-event that would confirm it), hoverPart is
-				// already null by the time CancelPickerFromEscape runs, so
-				// ClearHoverHighlight has nothing left to clean up and the part stays
-				// AlwaysOn+cyan forever. Reusing ClearHoverHighlight (not a bare
-				// SetHighlightDefault, which is what KRAB's original does — it has no
-				// persistent-selection concept) also correctly restores blue instead of
-				// default if this part happens to already be selectedPart.
+				// Cleared HERE, not on a mouse-up that may never come: if Esc cancels between
+				// down and up, hoverPart is already null and the part would stay lit forever.
+				// Via ClearHoverHighlight, so a selected part goes back to blue, not default.
 				ClearHoverHighlight();
 				// Lock stays active — released only once mouse-up confirms the pick.
 			}
@@ -309,11 +264,9 @@ namespace KRILL.UI
 		}
 
 		/// <summary>
-		/// Axis-mode twin of BuildActionPicker (2026-09-07, A2): the selected part's
-		/// usable axis fields (KrillQuery.GetCandidateAxisFields — stock's own
-		/// eligibility rule) minus those already assigned to this (set, axis). Shares
-		/// PickerKind.PickingAction: the Esc/lock handling is identical, only the
-		/// list differs.
+		/// Axis-mode twin of BuildActionPicker: the part's usable axis fields minus
+		/// those already assigned to this (set, axis). Shares PickerKind.PickingAction,
+		/// since only the list differs and the Esc/lock handling is identical.
 		/// </summary>
 		private void BuildFieldPicker()
 		{
@@ -353,8 +306,8 @@ namespace KRILL.UI
 					continue;
 				}
 				shown++;
-				// Field caption plus the owning module's name: a part can expose the
-				// same caption from two modules (e.g. two lights), the module tells them apart.
+				// Field caption plus the owning module's name: a part can expose the same
+				// caption from two modules, and the module name tells them apart.
 				PartModule owner = f.host as PartModule;
 				string label = FieldLabel(f) + (owner != null ? "  (" + owner.moduleName + ")" : string.Empty);
 				KrillUi.TextButton(list, label, () => AssignField(f), KrillUi.Panel2, KrillUi.Text, 12, -1f, 22f);
@@ -368,11 +321,7 @@ namespace KRILL.UI
 			KrillUi.TextButton(panel, Loc("#LOC_KRILL_ui_cancel"), CancelPicker, KrillUi.Panel, KrillUi.Muted, 12, 90f, 24f);
 		}
 
-		/// <summary>
-		/// Persists a field assignment on selectedPart and every current symmetry
-		/// sibling (same fan-out as AssignAction), with stock's defaults for a fresh
-		/// assignment: direct, the field's own KSPAxisField.axisMode, 20 %/s.
-		/// </summary>
+		/// <summary>Persists a field assignment on selectedPart and every symmetry sibling, with stock's defaults for a fresh assignment.</summary>
 		private void AssignField(BaseAxisField f)
 		{
 			KrillFieldRef fieldRef = KrillFieldRef.FromField(f);
@@ -428,13 +377,9 @@ namespace KRILL.UI
 				12, KrillUi.Tan);
 			KrillUi.Size(header.gameObject, -1f, 20f);
 
-			// Actions already assigned to this part for this (set, group) are hidden
-			// from the list (2026-07-28 user request) — offering to add a duplicate
-			// serves no purpose; use the ✕ in column 3 to remove one first if you
-			// actually want to reassign it. selectedPart already carries its own full
-			// copy of the group's assignments (symmetry fan-out writes to every
-			// member), so checking against it alone is enough — no extra symmetry
-			// handling needed here, same as column 3 already relies on.
+			// Actions already assigned for this (set, group) are hidden: adding a
+			// duplicate serves no purpose, remove it from column 3 first instead.
+			// Symmetry fan-out writes to every member, so checking selectedPart suffices.
 			List<KrillQuery.AssignmentEntry> already = GetEntriesForPart(ActiveParts(), selectedGroup.Value, selectedPart);
 
 			RectTransform list = KrillUi.ScrollList(panel, 180f);
@@ -483,15 +428,9 @@ namespace KRILL.UI
 				CancelPicker();
 				return;
 			}
-			// Fans out to every CURRENT symmetry sibling of selectedPart (2026-07-27),
-			// not just the one instance actually clicked in the scene — matches the
-			// stock behavior this is meant to replicate ("assign once, applies to the
-			// whole symmetric set"). Each part gets its OWN KrillActionRef value copy:
-			// KrillActionRef has no part identity of its own (module+occurrence+action
-			// only, see its class doc), so a fresh copy per sibling is only about not
-			// sharing one mutable object across independent parts' data, not about
-			// resolving correctly — the same value resolves fine on every sibling
-			// since they're all the same part type with the same modules/actions.
+			// Fans out to every current symmetry sibling, not just the instance clicked,
+			// matching stock's "assign once, applies to the whole set". Each sibling gets
+			// its own ref copy only to avoid sharing one mutable object.
 			bool assignedAny = false;
 			foreach (Part p in KrillQuery.GetSymmetryGroup(selectedPart))
 			{

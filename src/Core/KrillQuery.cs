@@ -3,11 +3,9 @@ using System.Collections.Generic;
 namespace KRILL
 {
 	/// <summary>
-	/// Read-side helpers over a set of parts: enumerate extended groups in use,
-	/// resolve the live actions of a (set, group), look up display names. Works on
-	/// any part list so the same code serves flight (vessel.parts) and the editor
-	/// (EditorLogic.fetch.ship.parts). Also hosts the career gate, which is a pure
-	/// delegation to the same stock check used for custom action groups.
+	/// Read-side helpers over a set of parts: groups in use, live actions of a
+	/// (set, group), display names, axis state. Takes any part list, so the same
+	/// code serves flight and the editor. Also hosts the career gate.
 	/// </summary>
 	public static class KrillQuery
 	{
@@ -50,7 +48,7 @@ namespace KRILL
 			return result;
 		}
 
-		/// <summary>One assignment row for the M3 detail view: which part/module it lives on, the raw assignment (for removal), and the resolved action if any.</summary>
+		/// <summary>One assignment row: where it lives, the raw assignment (for removal) and the resolved action, if any.</summary>
 		public class AssignmentEntry
 		{
 			public Part part;
@@ -59,7 +57,7 @@ namespace KRILL
 			public BaseAction resolved;
 		}
 
-		/// <summary>Every assignment entry for (set, group), one per assigned action (a part with two actions in the same group yields two entries) — the M3 detail view lists these directly, no extra part-then-action drill-down needed.</summary>
+		/// <summary>Every assignment entry for (set, group), one per assigned action: a part with two actions in the group yields two entries.</summary>
 		public static List<AssignmentEntry> GetAssignmentEntries(IList<Part> parts, int set, int group)
 		{
 			List<AssignmentEntry> result = new List<AssignmentEntry>();
@@ -85,14 +83,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Distinct parts with at least one assignment in (set, group), in first-seen
-		/// order, collapsed one row per symmetry group (2026-07-27: symmetric parts
-		/// carry identical, independently-persisted copies of the same assignment —
-		/// see GetSymmetryGroup — so they'd otherwise show up as separate rows for
-		/// what the player experiences as one part). The first member encountered
-		/// becomes the representative; its symmetryCounterparts are looked up FRESH
-		/// here, never cached, so a group broken apart later just stops collapsing
-		/// on the next rebuild — no stale-membership cleanup needed anywhere.
+		/// Distinct parts with an assignment in (set, group), collapsed one row per
+		/// symmetry group. Membership is read fresh, so a group broken apart later
+		/// just stops collapsing on the next rebuild.
 		/// </summary>
 		public static List<Part> GetAssignedParts(IList<Part> parts, int set, int group)
 		{
@@ -152,11 +145,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// A part plus its CURRENT symmetry counterparts (Part.symmetryCounterparts,
-		/// read live — never stored), as one logical unit for assignment/removal/
-		/// highlighting. A part with no symmetry siblings returns just itself, so
-		/// every caller can treat "one part" and "a symmetric set of parts" the same
-		/// way without a separate code path.
+		/// A part plus its current symmetry counterparts, read live and never stored,
+		/// as one logical unit. A part with no siblings returns just itself, so no
+		/// caller needs a separate path for "one part" and "a symmetric set".
 		/// </summary>
 		public static List<Part> GetSymmetryGroup(Part part)
 		{
@@ -166,11 +157,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Read-only view of a STOCK group's (1-10) live membership, resolved via the
-		/// SAME method stock itself uses to decide activation (BaseAction.GetActionGroup,
-		/// confirmed on decompiled source — no fallback between sets). Iterates each
-		/// module's own .Actions, never the part-level aggregate (M1 lesson: that
-		/// aggregate can yield actions with no resolvable owning module).
+		/// Read-only view of a stock group's (1-10) live membership, resolved with the
+		/// same method stock uses to decide activation. Iterates each module's own
+		/// Actions: the part-level aggregate can yield actions with no owning module.
 		/// </summary>
 		public static List<BaseAction> GetStockActions(IList<Part> parts, int set, KSPActionGroup group)
 		{
@@ -195,7 +184,7 @@ namespace KRILL
 			return result;
 		}
 
-		/// <summary>First display name found for exactly (set, group) across the parts; null if none. Names are per set with no inheritance (2026-09-14).</summary>
+		/// <summary>First display name found for exactly (set, group), or null. Names are per set, with no inheritance between sets.</summary>
 		public static string GetGroupName(IList<Part> parts, int set, int group)
 		{
 			foreach (ModuleKrill m in Modules(parts))
@@ -223,7 +212,7 @@ namespace KRILL
 			return null;
 		}
 
-		/// <summary>One axis-field assignment row for the window's column 3: where it lives, the raw assignment (for removal/option edits), and the resolved field if any.</summary>
+		/// <summary>One axis-field assignment row: where it lives, the raw assignment (for removal and option edits) and the resolved field.</summary>
 		public class AxisFieldEntry
 		{
 			public Part part;
@@ -258,10 +247,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Axis fields a KRILL axis may drive on this part — stock's own eligibility
-		/// rule (KrillFieldRef.IsUsable), iterating each module's Fields list. This
-		/// is the column-2 filter ("can this part take an axis at all?") and the
-		/// column-3 picker source.
+		/// Axis fields a KRILL axis may drive on this part, by stock's own eligibility
+		/// rule. Serves both the column-2 filter ("can this part take an axis at
+		/// all?") and the column-3 picker.
 		/// </summary>
 		public static List<BaseAxisField> GetCandidateAxisFields(Part part)
 		{
@@ -290,10 +278,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Read-only view of a STOCK custom axis's (A1-A4) live membership, the axis
-		/// twin of GetStockActions: BaseAxisField.GetAxisGroup(set) is the per-set
-		/// override mask stock itself consults (decompiled 2026-09-07), and like
-		/// BaseAction.GetActionGroup it has no fallback between sets.
+		/// Read-only view of a stock custom axis's (A1-A4) live membership, the axis
+		/// twin of GetStockActions: GetAxisGroup(set) is the per-set override mask
+		/// stock consults, with no fallback between sets.
 		/// </summary>
 		public static List<BaseAxisField> GetStockAxisFields(IList<Part> parts, int set, KSPAxisGroup group)
 		{
@@ -319,7 +306,7 @@ namespace KRILL
 			return result;
 		}
 
-		/// <summary>True if any part carries extended-axis data (any set) — decides whether the window's Axes section starts unfolded.</summary>
+		/// <summary>True if any part carries extended-axis data, in any set: decides whether the window's Axes section starts unfolded.</summary>
 		public static bool AnyAxisData(IList<Part> parts)
 		{
 			foreach (ModuleKrill m in Modules(parts))
@@ -334,11 +321,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Same unlock rule as stock custom action groups (VAB/SPH fully upgraded, or
-		/// the "action groups always allowed" advanced option): delegates to the very
-		/// method stock calls, so any difficulty option or mod override applies to
-		/// KRILL groups identically. Verified on decompiled GameVariables (threshold
-		/// editorNormLevel > 0.6 = Tier 3).
+		/// Same unlock rule as stock custom action groups, by delegating to the very
+		/// method stock calls — so any difficulty option or mod override applies to
+		/// KRILL groups identically.
 		/// </summary>
 		public static bool ExtendedGroupsUnlocked(bool isVAB)
 		{
@@ -353,46 +338,16 @@ namespace KRILL
 			return GameVariables.Instance.UnlockedActionGroupsCustom(level, isVAB);
 		}
 
-		/// <summary>
-		/// True if EITHER facility has unlocked extended groups. Used at flight-time
-		/// activation, where we don't know (and stock doesn't care) which editor
-		/// scene originally assembled the active vessel.
-		/// </summary>
+		/// <summary>True if either facility has unlocked extended groups: at flight time nobody knows which editor assembled the vessel.</summary>
 		public static bool ExtendedGroupsUnlockedAnywhere()
 		{
 			return ExtendedGroupsUnlocked(true) || ExtendedGroupsUnlocked(false);
 		}
 
 		/// <summary>
-		/// Everything known about one (set, group), returned together so there's
-		/// never a reason to call ModuleKrill directly instead of this query —
-		/// same struct, same fields, whether the caller is the KRILL window itself
-		/// or an external mod (2026-08-19: unifying internal/external reading was
-		/// an explicit request, not just "add an external API").
-		///
-		/// READ `signal` (2026-08-31, storage per kind settled 2026-09-02). It is
-		/// the plain 0/1 level this group is currently presenting, already derived
-		/// from `kind`, and it is what both KRAB and the KRILL console consume —
-		/// identical code for both, with no kind-specific branch anywhere in the
-		/// consumer:
-		///   Pulse  -> 1 for KrillSignal.PulseSeconds after the group fires, then
-		///             back to 0 on its own (a momentary contact). Runtime only.
-		///   Toggle -> its own persisted bool (KrillGroupSignal), flipped per
-		///             press, forceable by the player from the window.
-		///   Hold   -> 1 while at least one source (key, window, console) is
-		///             holding it (KrillSignal). Runtime only.
-		///
-		/// `active` is the PRIVATE BOOKKEEPING direction bit and is NOT a state
-		/// reading: KRILL flips it on every Pulse/Toggle press purely to know
-		/// which of Activate/Deactivate to send next. For a Pulse group bound to
-		/// a one-shot action (a decoupler) it alternates forever while
-		/// corresponding to no physical state whatsoever — reading it as a level
-		/// is exactly the bug the signal split was created to end (found
-		/// 2026-08-30 via KRAB's bridge, which was reading `active`). Kept in the
-		/// struct because it is still the honest raw value, but external readers
-		/// should have no reason to touch it. The field names are part of the
-		/// reflection contract KRAB's KrillGroupBridge resolves by name — don't
-		/// rename them.
+		/// Everything known about one (set, group), read the same way by the window and
+		/// by other mods. Read `signal`, the plain 0/1 level; `active` is the private
+		/// direction bit, not a state. Field names are a reflection contract.
 		/// </summary>
 		public readonly struct GroupState
 		{
@@ -408,7 +363,7 @@ namespace KRILL
 			}
 		}
 
-		/// <summary>Scene-agnostic form, used by the KRILL window itself (root part + already-resolved active set, works in both editor and flight — see KrillWindow.RootPart/activeSet). Null only if rootPart carries no KRILL data at all.</summary>
+		/// <summary>Scene-agnostic form (root part + resolved set) for the window itself. Null only if rootPart carries no KRILL data at all.</summary>
 		public static GroupState? GetGroupState(Part rootPart, int set, int group)
 		{
 			ModuleKrill root = rootPart != null ? rootPart.FindModuleImplementing<ModuleKrill>() : null;
@@ -422,11 +377,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Picks the kind's own storage for the single 0/1 level readers consume
-		/// (see KrillSignal for why each kind keeps it where it does). In the
-		/// editor (no vessel) Pulse and Hold never read lit — nothing actuates
-		/// there in the first place; a Toggle's persisted signal still does, so
-		/// a value forced before launch shows up correctly.
+		/// Picks the kind's own storage for the single 0/1 level readers consume. In
+		/// the editor Pulse and Hold never read lit — nothing actuates there — while a
+		/// Toggle's persisted signal still does, so a value forced before launch shows.
 		/// </summary>
 		private static bool ReadSignal(ModuleKrill root, Vessel v, KrillActuationKind kind, int set, int group)
 		{
@@ -441,11 +394,7 @@ namespace KRILL
 			}
 		}
 
-		/// <summary>
-		/// Public read API for other mods (and the console/MFD): resolves the
-		/// vessel's CURRENTLY ACTIVE override set automatically (same resolution
-		/// KrillActivation uses) and delegates to the overload above.
-		/// </summary>
+		/// <summary>Public read API for other mods: resolves the vessel's active override set and delegates to the overload above.</summary>
 		public static GroupState? GetGroupState(Vessel v, int group)
 		{
 			if (v == null)
@@ -456,24 +405,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Everything a reader needs about one extended axis (2026-09-07,
-		/// notes/axes-design.md §3) — the analog twin of GroupState, simpler
-		/// because an axis has no private bookkeeping: `value` IS the level, in
-		/// -1..1, whatever the kind. Consumers (KRAB, the console) read `value`
-		/// and need no kind-specific branch; `kind` and `rest` are there for
-		/// display (the console animates a Spring control back to `rest`).
-		/// The field names are a reflection contract for external mods — don't
-		/// rename them.
-		///
-		/// Storage per kind (A4, mirrors KrillAxisDriver.ResolveLevel): Fixed reads
-		/// its persisted value on the root part (written by the driver from the
-		/// controller, or by the window's slider); Spring reads the runtime level
-		/// in KrillAxisSignal (controller each tick, slider while held, return
-		/// ramp after) and falls back to `rest` when nothing has touched it yet —
-		/// which is also what the editor shows, having no vessel.
-		/// Axes 1-4 (A5, 2026-09-13) are stock's custom axes: `value` is the
-		/// vessel's FlightCtrlState.custom_axes entry (flight only), kind Spring,
-		/// rest 0 — so a consumer can read every axis, stock or extended, alike.
+		/// Everything a reader needs about one extended axis: `value` IS the level in
+		/// -1..1 whatever the kind, `kind` and `rest` are for display. Axes 1-4 report
+		/// the same way. Field names are a reflection contract — don't rename them.
 		/// </summary>
 		public readonly struct AxisState
 		{
@@ -489,18 +423,14 @@ namespace KRILL
 			}
 		}
 
-		/// <summary>Scene-agnostic form (root part + resolved set), used by the KRILL window. Null if rootPart carries no KRILL module at all, or — for the stock axes 1-4 — outside flight, where there is no control state to read.</summary>
+		/// <summary>Scene-agnostic form (root part + resolved set). Null without a KRILL module, or for axes 1-4 outside flight, where there is no control state.</summary>
 		public static AxisState? GetAxisState(Part rootPart, int set, int axis)
 		{
 			if (axis < KrillAxes.FirstExtended)
 			{
-				// A5 mirror rows (2026-09-13): A1-A4 ARE stock's custom axes, so the
-				// value is what FlightInputHandler wrote into the vessel's control
-				// state this physics frame (FlightCtrlState.custom_axes, design §8.1)
-				// — the same number stock's AxisGroupsModule applies to the fields.
-				// Flight only: the editor has no control state. Stock has no notion
-				// of kind or rest, so they read as Spring / 0; the set is irrelevant
-				// (one stock axis, one value). Same contract for KRAB's analog read.
+				// A1-A4 ARE stock's custom axes: the value is what FlightInputHandler wrote
+				// into the control state this frame, the same number stock applies to the
+				// fields. Flight only, and stock has no kind or rest, so they read Spring/0.
 				Vessel v = rootPart != null ? rootPart.vessel : null;
 				float[] custom = v != null && v.ctrlState != null ? v.ctrlState.custom_axes : null;
 				if (custom == null || axis < 1 || axis > custom.Length)

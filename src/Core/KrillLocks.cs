@@ -5,21 +5,9 @@ using UnityEngine;
 namespace KRILL
 {
 	/// <summary>
-	/// KRILL's view of InputLockManager (2026-09-18, K1 — generalizes the check
-	/// KrillAxisDriver introduced on 2026-09-11): "is this control type unlocked,
-	/// ignoring the locks KRILL itself holds?". Every KRILL lock id starts with
-	/// "KRILL" and every one of them uses ALLBUTCAMERAS, which contains almost
-	/// every bit — so the window's own hover lock (FocusLock) would otherwise
-	/// freeze the axis driver while the player drags the footer slider, and a
-	/// bound stick whenever the mouse crossed the window. Pause, modal dialogs
-	/// and other mods' locks are always honoured.
-	///
-	/// The one KRILL lock that CAN count is the text-field typing lock
-	/// (KrillUi's TypingLock, KEYBOARDINPUT): key polling must stop while the
-	/// player types a group or axis name, or a "k" in the name field would fire
-	/// group K / nudge an axis. The physical-channel read path keeps ignoring it
-	/// (a stick is not the keyboard). lockStack is a small dictionary; walking
-	/// it per frame or per physics tick is nothing.
+	/// "Is this control type unlocked, ignoring KRILL's own locks?" — every KRILL
+	/// lock uses ALLBUTCAMERAS, which would otherwise freeze the axis driver while
+	/// the mouse is over the window. Pause, modals and other mods always count.
 	/// </summary>
 	public static class KrillLocks
 	{
@@ -29,7 +17,7 @@ namespace KRILL
 		private static bool keysBlockedLogged;
 
 		/// <param name="mask">Control type(s) to test.</param>
-		/// <param name="honourTyping">True for key polling (the typing lock blocks it), false for controller-channel reads (it doesn't).</param>
+		/// <param name="honourTyping">True for key polling (KRILL's typing lock blocks it), false for controller-channel reads.</param>
 		public static bool Unlocked(ControlTypes mask, bool honourTyping)
 		{
 			ulong others = 0;
@@ -44,11 +32,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// The one gate every key poll goes through (group keys, set-jump keys,
-		/// axis +/- keys): no key capture in progress and nothing outside KRILL —
-		/// or KRILL's own typing lock — holding the keyboard. Logs ONCE, on the
-		/// transition into "blocked", which locks are responsible, so a silent
-		/// "my keys stopped working" has an answer in KSP.log.
+		/// The one gate every key poll goes through: no capture running and nothing
+		/// outside KRILL holding the keyboard. Logs once per transition which locks
+		/// are responsible, so a silent "my keys stopped working" has an answer.
 		/// </summary>
 		public static bool KeysAllowed()
 		{

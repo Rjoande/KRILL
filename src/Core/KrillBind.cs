@@ -6,11 +6,9 @@ using UnityEngine;
 namespace KRILL
 {
 	/// <summary>
-	/// One player keybind: a primary KeyCode plus zero or more modifier KeyCodes
-	/// that must be held when the primary is freshly pressed. Works identically for
-	/// keyboard keys and joystick buttons (Unity KeyCode covers both —
-	/// Joystick1Button0..Joystick8Button19 — capture never distinguishes them,
-	/// matching the "press it now" design, design doc §4).
+	/// One player keybind: a primary KeyCode plus zero or more modifiers that must
+	/// be held with it. Keyboard keys and joystick buttons are the same thing here
+	/// (Unity KeyCode covers both), and capture never distinguishes them.
 	/// </summary>
 	public class KrillBind
 	{
@@ -20,12 +18,9 @@ namespace KRILL
 		public bool IsNone => primary == KeyCode.None;
 
 		/// <summary>
-		/// True on the frame the primary is freshly pressed while every required
-		/// modifier is held. Does NOT check that no OTHER key is held: a bind with
-		/// no modifiers fires on any press of its primary regardless of what else
-		/// is down. Two binds sharing a primary can therefore both fire together
-		/// (see KrillConflicts) — accepted for M2, revisit only if this proves
-		/// painful once the M3 UI makes it visible day to day.
+		/// True on the frame the primary is freshly pressed with every modifier held.
+		/// Does not check that nothing ELSE is down, so two binds sharing a primary
+		/// can fire together — surfaced to the player by KrillConflicts instead.
 		/// </summary>
 		public bool Matches()
 		{
@@ -44,19 +39,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// True while the primary AND every modifier are currently held — a
-		/// level check, no edge (Hold-kind groups since 2026-08-19, axis +/- keys
-		/// since K0). Deliberately not a GetKeyDown/GetKeyUp edge pair:
-		/// KrillInputManager compares this every frame against whether the Key
-		/// source is currently recorded for the group (KrillSignal.HasSource) and
-		/// turns the difference into a HoldPress/HoldRelease edge, so a missed
-		/// key-up (losing OS focus mid-hold, switching active vessel mid-hold) is
-		/// noticed and released on the next frame instead of leaving the group
-		/// stuck. Mirrors stock's own BRAKES handling (FlightInputHandler.cs,
-		/// verified on decompiled source) with that one self-healing addition.
-		/// Modifiers are part of the level (2026-09-18, K0): until then only the
-		/// primary was checked, so a Hold bound to "LeftShift+K" fired on a bare
-		/// K — releasing the modifier first now ends the hold, by design.
+		/// True while the primary and every modifier are held — a level, not an edge:
+		/// callers diff it against the recorded source each frame, so a missed key-up
+		/// (lost focus, vessel switch) still releases on the next frame.
 		/// </summary>
 		public bool IsHeldWithModifiers()
 		{
@@ -74,13 +59,13 @@ namespace KRILL
 			return true;
 		}
 
-		/// <summary>True if this and other share the same primary key (see Matches doc for why this is the relevant conflict test).</summary>
+		/// <summary>True if this and other share the same primary key — the test that matters, see Matches.</summary>
 		public bool SharesPrimaryWith(KrillBind other)
 		{
 			return other != null && !IsNone && primary == other.primary;
 		}
 
-		/// <summary>Human-readable form for logs and the (future) UI, e.g. "LeftShift+J".</summary>
+		/// <summary>Human-readable form for logs and the UI, e.g. "LeftShift+J".</summary>
 		public string Describe()
 		{
 			if (IsNone)

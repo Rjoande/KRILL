@@ -5,29 +5,13 @@ using UnityEngine;
 namespace KRILL
 {
 	/// <summary>
-	/// Runtime-only level of the extended axes that have NO persisted value
-	/// (2026-09-09, notes/axes-design.md A4) — the axis twin of KrillSignal:
-	///
-	///   Spring - the live -1..1 level per (vessel, set, axis), written every
-	///            physics tick by the driver from the controller, or by the
-	///            window's slider while the mouse holds it; on release it
-	///            RETURNS to the axis's rest value over a short real-time ramp
-	///            (Tick), the one place where the Spring kind is functional
-	///            rather than a reminder (§2: with a physical stick, the
-	///            hardware itself springs back). Since K1 (2026-09-18, §11) a
-	///            held +/- key drives it the same way: a ramp toward ±1 at the
-	///            attack speed from the settings (infinite = stock's snap).
-	///   Fixed  - not here: its level is the PERSISTED value on the vessel root
-	///            (KrillAxisSetting.value), because it must survive save/load.
-	///
-	/// One mechanism for both directions: an entry ramps toward `target` at
-	/// `speed` full-scale units per REAL second until it gets there. Never
-	/// persisted, dies with the flight scene (KrillInputManager.OnDestroy ->
-	/// Clear): a quicksave mid-deflection must not come back as a stuck axis.
+	/// Runtime-only level of the Spring axes, the axis twin of KrillSignal: one
+	/// entry per (vessel, set, axis) ramping toward a target at a given speed, so
+	/// a release returns to rest. Never persisted — a quicksave must not stick.
 	/// </summary>
 	public static class KrillAxisSignal
 	{
-		/// <summary>Return-to-rest ramp for a released Spring axis, in full-scale units per REAL second (a -1..+1 swing takes ~0.33 s). Unscaled time: a UI animation must not slow down or speed up with physics warp.</summary>
+		/// <summary>Return-to-rest ramp, in units per REAL second (~0.33 s end to end): unscaled, so it never slows down with physics warp.</summary>
 		public const float ReturnSpeed = 6f;
 
 		private struct AxisKey : IEquatable<AxisKey>
@@ -97,10 +81,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Starts (or retargets) a ramp toward `target` at `speed` full-scale
-		/// units per real second; PositiveInfinity lands immediately. A held +/-
-		/// key calls this every tick with ±1 — retargeting an already-running
-		/// ramp to the same target is a no-op, so nothing jitters.
+		/// Starts (or retargets) a ramp toward `target` at `speed` units per real
+		/// second; infinity lands immediately. Retargeting a running ramp to the same
+		/// target is a no-op, so a key held down across ticks never jitters.
 		/// </summary>
 		public static void SetTarget(Vessel v, int set, int axis, float target, float speed)
 		{
@@ -121,7 +104,7 @@ namespace KRILL
 			e.ramping = !Mathf.Approximately(e.value, target);
 		}
 
-		/// <summary>Starts the return ramp toward `rest` (slider let go on an unbound Spring axis, +/- key released with no channel to fall back on).</summary>
+		/// <summary>Starts the return ramp toward `rest`: the slider or a +/- key was let go with no channel to fall back on.</summary>
 		public static void Release(Vessel v, int set, int axis, float rest)
 		{
 			if (!TryKey(v, set, axis, out AxisKey key) || !entries.ContainsKey(key))

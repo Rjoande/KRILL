@@ -4,24 +4,9 @@ using UnityEngine.UI;
 namespace KRILL.UI
 {
 	/// <summary>
-	/// First real (non-mockup) pass at the Apollo console — geometry only, no
-	/// bevel/glow/severity/text yet (Categoria 1 "faccio io" work, see
-	/// notes/console-art-pipeline.md). Renders the FLAT placeholder art the
-	/// user measured by hand (dev/console_templates/apollo_background.png,
-	/// apollo_AGbutton.png) purely to check that the grid proportions read
-	/// correctly on an actual screen at real UI_SCALE — not the finished look.
-	///
-	/// WIP on the art/chrome side: no drag, no SET/PAGE/mode-select frame yet
-	/// (not locked). Visibility IS wired up for real though (2026-08-30,
-	/// right-click on the KRILL toolbar icon — see KrillToolbarApp), meant as
-	/// a permanent shortcut going forward, not a throwaway test toggle.
-	/// Starts hidden each time the flight scene loads (no persistence across
-	/// scenes, matches this KSPAddon being recreated on every scene entry).
-	/// Every Image has raycastTarget off so it never blocks flight input.
-	///
-	/// Preview builds only (KRILL_CONSOLE_PREVIEW, see KRILL.csproj, 2026-09-02):
-	/// in a release build the KSPAddon attribute is compiled out, so this class
-	/// is never instantiated, loads no texture and has no toolbar hook.
+	/// WIP Apollo console: grid geometry only, on flat placeholder art. Starts
+	/// hidden on every flight scene load, toggled by right-clicking the toolbar
+	/// icon; every Image has raycastTarget off so it never blocks flight input.
 	/// </summary>
 #if KRILL_CONSOLE_PREVIEW
 	[KSPAddon(KSPAddon.Startup.Flight, false)]
@@ -42,8 +27,7 @@ namespace KRILL.UI
 		private const string BackgroundTexture = "KRILL/Textures/Console/Apollo/apollo_background";
 		private const string ButtonTexture = "KRILL/Textures/Console/Apollo/apollo_AGbutton";
 
-		// Measured by hand by the user against the Apollo layout template
-		// (dev/console_templates/apollo_template_1.png), not derived here.
+		// Measured by hand against the Apollo layout template, not derived here.
 		private const float BackgroundWidth = 1300f;
 		private const float BackgroundHeight = 900f;
 		private const float ButtonWidth = 300f;
@@ -51,7 +35,7 @@ namespace KRILL.UI
 		private const float GridMarginX = 36f; // left edge of the background to the first button's left edge
 		private const float GridMarginY = 87f; // top edge of the background to the first button's top edge
 		private const float GutterX = 7f;
-		private const float GutterY = 5f; // tighter than GutterX by user's eye once seen in game (2026-08-30)
+		private const float GutterY = 5f; // deliberately tighter than GutterX
 		private const int Columns = 4;
 		private const int Rows = 6; // 4x6 = 24 cells, matches extended groups 11-34
 
@@ -69,9 +53,8 @@ namespace KRILL.UI
 			RectTransform background = BuildImage(transform, BackgroundTexture, BackgroundWidth, BackgroundHeight);
 			background.pivot = new Vector2(0f, 1f);
 			background.anchorMin = background.anchorMax = new Vector2(0.5f, 0.5f);
-			// Centers the panel on screen: pivot sits at the panel's top-left
-			// corner, so offsetting it half a size up-left from screen center
-			// puts the panel's actual center on screen center.
+			// The pivot is the panel's top-left corner, so offsetting it half a size
+			// up-left from screen center puts the panel's own center on screen center.
 			background.anchoredPosition = new Vector2(-BackgroundWidth * 0.5f, BackgroundHeight * 0.5f);
 
 			for (int row = 0; row < Rows; row++)

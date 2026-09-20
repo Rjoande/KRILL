@@ -4,28 +4,16 @@ using System.Reflection;
 namespace KRILL
 {
 	/// <summary>
-	/// Non-blocking conflict advisory for a candidate bind (design doc §4): stock
-	/// warns, never blocks, so KRILL does the same — this only produces human-
-	/// readable descriptions of what else already uses the candidate's primary key.
-	/// Checks both the KRILL keymap and every stock KeyBinding on GameSettings
-	/// (reflection: stock exposes no single "all keybindings" list).
-	///
-	/// Conflict heuristic: two binds conflict if they share the same PRIMARY key,
-	/// regardless of modifiers — see KrillBind.Matches for why this is the correct
-	/// direction to err in (a modifier-less bind fires through another bind's
-	/// modifier being held).
+	/// Non-blocking conflict advisory: like stock, KRILL warns and never blocks —
+	/// this only describes what else already uses a candidate's primary key or
+	/// channel. Two binds conflict when they share the PRIMARY key, modifiers aside.
 	/// </summary>
 	public static class KrillConflicts
 	{
 		/// <summary>
-		/// excludeGroup/excludeSet: -1 means "nothing to exclude in that dimension"
-		/// (never a valid group or set number, so it's a safe sentinel for both).
-		/// A group candidate only needs to exclude itself from KrillKeymap and a set
-		/// candidate only from KrillSetKeymap — the two dimensions can never collide
-		/// with EACH OTHER (see KrillSetKeymap class doc), so both scans always run
-		/// regardless of which kind of candidate this is. The axis +/- keys (K2,
-		/// KrillAxisKeys) are a third dimension with the same rule: excludeAxis +
-		/// excludeAxisPlus name the one slot being written, -1 means none.
+		/// Everything else already bound to the candidate's primary key. The exclude*
+		/// parameters name the one slot being written (group, set-jump, axis +/- key);
+		/// -1 means "nothing to exclude in that dimension", never a valid number.
 		/// </summary>
 		public static List<string> Describe(KrillBind candidate, int excludeGroup, int excludeSet = -1, int excludeAxis = -1, bool excludeAxisPlus = false)
 		{
@@ -88,23 +76,7 @@ namespace KRILL
 			return hits;
 		}
 
-		/// <summary>
-		/// Axis twin of Describe (2026-09-08, A3): what else already reads the same
-		/// physical channel (an AxisBinding_Single idTag such as "joy0.3"). Checks
-		/// the other KRILL axes, every stock AxisBinding on GameSettings (primary
-		/// and secondary, reflection again — no single list exists) and the four
-		/// stock custom axes, which live in an AxisKeyBindingList rather than as
-		/// AxisBinding fields. Advisory only, like everything here: a channel bound
-		/// twice simply moves both things, exactly as stock lets you do.
-		/// </summary>
-		/// <summary>
-		/// Every OTHER binding already reading the channel `idTag`: KRILL's extended
-		/// axes (skipping `excludeAxis`), every stock AxisBinding field of
-		/// GameSettings, and the four stock custom axes (skipping the slot
-		/// `excludeStockCustom`, 1-4, when the candidate is being written INTO that
-		/// slot by an A1-A4 mirror row — A5, 2026-09-13).
-		/// </summary>
-		/// <summary>One +/- key slot of an extended axis (K2), skipped when it is the very slot being written.</summary>
+		/// <summary>One +/- key slot of an extended axis, skipped when it is the very slot being written.</summary>
 		private static void AddAxisKeyHit(List<string> hits, KrillBind candidate, int axis, bool plus, KrillBind slot, int excludeAxis, bool excludeAxisPlus)
 		{
 			if (slot == null || (axis == excludeAxis && plus == excludeAxisPlus))
@@ -117,6 +89,11 @@ namespace KRILL
 			}
 		}
 
+		/// <summary>
+		/// Axis twin of Describe: every other binding already reading channel `idTag`
+		/// — KRILL's own axes, every stock AxisBinding on GameSettings, and the four
+		/// stock custom axes, which live in a list rather than as fields.
+		/// </summary>
 		public static List<string> DescribeAxis(string idTag, int excludeAxis, int excludeStockCustom = -1)
 		{
 			List<string> hits = new List<string>();

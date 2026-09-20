@@ -4,12 +4,9 @@ using UnityEngine;
 namespace KRILL
 {
 	/// <summary>
-	/// One extended-group membership for one action of the owning part.
-	/// Mirrors the stock shape exactly: stock keeps actionGroup (set 0) plus
-	/// overrideGroup0..3 (sets 1..4) per action; KRILL keeps (set, group) pairs
-	/// per action for groups the stock bitmask cannot hold (11+). Sets are
-	/// independent, like stock: set 0 is NOT inherited by sets 1..4 (verified on
-	/// decompiled BaseAction.GetActionGroup).
+	/// One extended-group membership for one action of the owning part, mirroring
+	/// the stock shape: (set, group) pairs per action, for the groups the stock
+	/// bitmask cannot hold. Sets are independent, exactly as in stock.
 	/// </summary>
 	public class KrillAssignment
 	{
@@ -49,12 +46,9 @@ namespace KRILL
 	}
 
 	/// <summary>
-	/// A player-facing display name for a group, per set. Names are a KRILL-only
-	/// convenience and, like assignments, are independent per set: a name
-	/// written in set 0 is set 0's only (user decision 2026-09-14, replacing the
-	/// original set-0 inheritance — with it, a set could never "un-inherit" a
-	/// name, clearing the field just brought the set-0 one back).
-	/// Names are allowed for stock groups (1..10) too.
+	/// A player-facing display name for a group, per set and with no inheritance
+	/// between sets — otherwise a set could never un-inherit a name. Allowed for
+	/// stock groups (1..10) too.
 	/// </summary>
 	public class KrillGroupName
 	{
@@ -87,18 +81,8 @@ namespace KRILL
 
 	/// <summary>
 	/// Persisted DIRECTION bit of one (set, group): whether the next Fire sends
-	/// Activate or Deactivate — the KRILL equivalent of stock's
-	/// ActionGroupList.groups / groupStates bool arrays (verified on decompiled
-	/// ActionGroupList.ToggleGroup), flipped on every Pulse/Toggle press exactly
-	/// like stock. PRIVATE BOOKKEEPING (2026-09-02): nothing external reads it,
-	/// the signal readers consume lives elsewhere (KrillGroupSignal for Toggle,
-	/// KrillSignal for Pulse/Hold). Hold-kind groups never write it. By
-	/// convention lives on the vessel ROOT part's ModuleKrill only (same
-	/// convention already used for KrillGroupName) so it survives quicksave/
-	/// quickload and scene changes exactly like stock's own group states. No
-	/// inheritance rule (unlike names): each (set, group) pair is independent,
-	/// defaulting to false if absent. Node name kept as KRILL_TOGGLE for
-	/// craft-file continuity.
+	/// Activate or Deactivate. Private bookkeeping — the signal readers consume
+	/// lives elsewhere. On the vessel ROOT part, per set, absent = false.
 	/// </summary>
 	public class KrillGroupToggle
 	{
@@ -130,15 +114,9 @@ namespace KRILL
 	}
 
 	/// <summary>
-	/// Persisted SIGNAL of a Toggle-kind (set, group): the 0/1 the player means
-	/// by it ("this reads as 1 to me"), flipped on every press and writable by
-	/// hand from the KRILL window's State button. Deliberately a SEPARATE bool
-	/// from KrillGroupToggle (user decision 2026-09-02): a manual resync
-	/// reconciles the signal with the player's judgment, not with what the part
-	/// last received — so forcing it must never change which direction the next
-	/// press sends. Only ever written for Toggle groups; Pulse and Hold keep
-	/// their (transient) signal in KrillSignal instead. Same root-part
-	/// convention and same per-set independence as the direction bit.
+	/// Persisted SIGNAL of a Toggle-kind (set, group): the 0/1 the player means by
+	/// it, forceable from the window and separate from the direction bit on purpose
+	/// — a manual resync must not change which direction the next press sends.
 	/// </summary>
 	public class KrillGroupSignal
 	{
@@ -170,53 +148,23 @@ namespace KRILL
 	}
 
 	/// <summary>
-	/// How one (set, group) produces the SIGNAL that external readers consume
-	/// (other mods such as KRAB, and the KRILL console) — 2026-08-19, reworked
-	/// 2026-08-31 and again 2026-09-02 (notes/kind-signal-analysis.md).
-	///
-	/// Key principle: what a reader sees is KrillQuery.GroupState.signal, a
-	/// plain 0/1 level whatever the kind — consumers need no kind-specific
-	/// logic at all: 1 means lit, 0 means not. The kind only decides WHERE that
-	/// level lives and, for Hold alone, how the part is actuated. The persisted
-	/// direction bit (KrillGroupToggle) is private bookkeeping for the
-	/// Activate/Deactivate alternation and is never the signal.
-	///
-	/// Pulse (default; named "Switch" before 2026-08-31 — renamed because
-	/// "pulse vs toggle" survives translation far better): a momentary contact.
-	/// The action fires once per press exactly as before; the signal goes to 1
-	/// and returns to 0 by itself after KrillSignal.PulseSeconds. Runtime only,
-	/// never persisted. Correct for a group bound to a one-shot action (a
-	/// decoupler), where an alternating bool corresponds to no physical state.
-	///
-	/// Toggle: the signal is its own PERSISTED bool (KrillGroupSignal), flipped
-	/// per press, and the only kind where the window offers a manual
-	/// force-correct of it (no action invoked, direction bit untouched) — for
-	/// when the real part state drifts out of sync via another mod or a manual
-	/// PAW click, or simply when the player decides what 1 means.
-	///
-	/// Hold (2026-08-19, after confirming stock's own Brakes group works this
-	/// way — FlightInputHandler.cs, decompiled): the one kind with a different
-	/// ACTUATION mechanism — Activate when the level goes 0 -> 1, Deactivate
-	/// when it goes 1 -> 0 (KrillActivation.HoldPress/HoldRelease), never a
-	/// press-to-flip. The level is the set of sources (key, window, console)
-	/// currently pressing it (KrillSignal), runtime only: a hold can't survive
-	/// a save because there is no key still down after a load. Deliberately NO
-	/// minimum duration (user decision 2026-08-31): a brief tap yields a brief
-	/// 1, because Hold is a level and a floor would break the "held means held"
-	/// contract readers rely on — unlike Pulse, which IS a timed shape.
+	/// How one (set, group) produces the signal readers consume: they always see a
+	/// plain 0/1 level, and the kind only decides where that level lives and, for
+	/// Hold, how the part is actuated.
 	/// </summary>
 	public enum KrillActuationKind
 	{
+		/// <summary>Momentary contact: the action fires once per press and the signal returns to 0 by itself. Right for a one-shot action.</summary>
 		Pulse = 0,
+
+		/// <summary>The signal is its own persisted bool, and the only one the window lets the player force back in sync without invoking anything.</summary>
 		Toggle = 1,
+
+		/// <summary>Activate on the level's 0 -> 1 edge, Deactivate on 1 -> 0, like stock's Brakes. No minimum duration: a brief tap yields a brief 1.</summary>
 		Hold = 2,
 	}
 
-	/// <summary>
-	/// Sparse per-(set, group) actuation-kind label, same shape/scoping as
-	/// KrillGroupToggle (independent per set, no inheritance — a group can mean
-	/// something different from one set to another). Absent = Pulse.
-	/// </summary>
+	/// <summary>Sparse per-(set, group) actuation-kind label: independent per set, so a group can mean something different in each. Absent = Pulse.</summary>
 	public class KrillGroupKind
 	{
 		public const string NodeName = "KRILL_KIND";
@@ -232,11 +180,8 @@ namespace KRILL
 			node.AddValue("kind", kind.ToString());
 		}
 
-		// Note: the kind serializes BY NAME. A craft saved before the 2026-08-31
-		// Switch -> Pulse rename would carry `kind = Switch` and be dropped here
-		// as malformed, falling back to the default (Pulse — the same thing). No
-		// legacy shim by user decision (2026-09-02): the mechanic was only ever
-		// tested on freshly built craft, and the fallback is already the right value.
+		// The kind serializes BY NAME, and an unknown name falls back to the default.
+		// That is deliberately the only compatibility handling there is.
 		public static KrillGroupKind Load(ConfigNode node)
 		{
 			KrillGroupKind k = new KrillGroupKind();
@@ -253,15 +198,9 @@ namespace KRILL
 	}
 
 	/// <summary>
-	/// Console severity label for one (set, group), independent of KrillActuationKind:
-	/// kind describes HOW a group activates, this describes how the future flight
-	/// console should COLOR it (2026-08-24 design discussion; named "console", not
-	/// "HUD" — 2026-08-27, it's a clickable button grid, not a see-through overlay).
-	/// Purely cosmetic — carries no behavior of its own until the console reads it.
-	/// Unlike kind, allowed on stock groups (1..10) too: the console grid shows
-	/// those groups exactly like extended ones (same precedent as KrillGroupName),
-	/// and severity has no dependency on which engine (stock or KRILL) actually
-	/// runs the group.
+	/// Console severity label for one (set, group): the kind says HOW a group
+	/// activates, this says how the console should COLOR it. Purely cosmetic, and
+	/// allowed on stock groups too — the console grid shows those the same way.
 	/// </summary>
 	public enum KrillIndicatorType
 	{
@@ -270,12 +209,7 @@ namespace KRILL
 		Warning = 2,
 	}
 
-	/// <summary>
-	/// Sparse per-(set, group) indicator-type label, same shape/scoping as
-	/// KrillGroupKind (independent per set, no inheritance). Absent = Info, the
-	/// least alarming value — same "absent = least invasive" convention as kind
-	/// defaulting to Pulse.
-	/// </summary>
+	/// <summary>Sparse per-(set, group) indicator-type label, same shape as the kind. Absent = Info, the least alarming value.</summary>
 	public class KrillGroupIndicator
 	{
 		public const string NodeName = "KRILL_INDICATOR";
@@ -314,20 +248,15 @@ namespace KRILL
 	}
 
 	/// <summary>
-	/// The complete KRILL payload of one part: extended-group assignments for the
-	/// part's own actions and extended-axis assignments for its axis fields, plus
-	/// (by convention, on the vessel root) group/axis display names and per-(set,
-	/// group|axis) settings. Pure data + ConfigNode I/O — no Unity lifecycle, so
-	/// it can be round-tripped and unit-tested (in-game self-test) without a live
-	/// module. Axis data (2026-09-07, notes/axes-design.md) lives in its own
-	/// three lists beside the group ones: same tolerant I/O, same root-part
-	/// convention, never mixed with stock's AXISGROUPS node.
+	/// The complete KRILL payload of one part: group and axis assignments for its
+	/// own actions and fields, plus display names and settings on the vessel root.
+	/// Pure data and ConfigNode I/O, so it round-trips without a live module.
 	/// </summary>
 	public class KrillPartData
 	{
 		public const string BackupNodeName = "KRILL_DATA";
 
-		/// <summary>Axis display names reuse KrillGroupName (same shape: set, number, name — independent per set, like group names) under a distinct node name so the two numberings never collide.</summary>
+		/// <summary>Axis display names reuse KrillGroupName under a distinct node name, so the two numberings never collide.</summary>
 		public const string AxisNameNodeName = "KRILL_AXIS_NAME";
 
 		public readonly List<KrillAssignment> assignments = new List<KrillAssignment>();
@@ -485,9 +414,8 @@ namespace KRILL
 			}
 		}
 
-		// ---- Unity-serializable backup form (editor-clone lesson from KRAB:
-		// editor part instances are Unity clones, OnLoad never runs on the clone,
-		// so every complex payload needs a [SerializeField]-able string mirror).
+		// ---- Unity-serializable backup form: editor part instances are clones and
+		// never run OnLoad, so the payload needs a [SerializeField]-able mirror.
 
 		public string SaveToString()
 		{
@@ -513,7 +441,7 @@ namespace KRILL
 			Load(payload);
 		}
 
-		// ---- Mutation helpers (used by self-test now, by the editor UI from M3 on).
+		// ---- Mutation helpers
 
 		public bool HasAssignment(int set, int group, KrillActionRef actionRef)
 		{
@@ -539,19 +467,16 @@ namespace KRILL
 			}
 		}
 
-		/// <summary>Removes one specific assignment (M3 detail view's per-row [x]). Returns true if something was actually removed.</summary>
+		/// <summary>Removes one specific assignment. True if something was actually removed.</summary>
 		public bool RemoveAssignment(KrillAssignment assignment)
 		{
 			return assignments.Remove(assignment);
 		}
 
 		/// <summary>
-		/// Removes assignment(s) matching these VALUES rather than a specific object
-		/// reference — needed when a removal is fanned out to a symmetric sibling
-		/// (2026-07-27): each part in a symmetry group holds its OWN independent
-		/// KrillAssignment instance (same values, different object), so the
-		/// reference-based RemoveAssignment above can't be reused directly on a
-		/// sibling's list. Returns true if anything was removed.
+		/// Removes assignments matching these VALUES rather than an object reference:
+		/// each part of a symmetry group holds its own instance with the same values,
+		/// so a fan-out can't reuse the reference-based overload on a sibling's list.
 		/// </summary>
 		public bool RemoveAssignmentMatching(int set, int group, string module, int occurrence, string action)
 		{
@@ -560,11 +485,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Strips assignments/name/toggle for one (set, group) pair on THIS part only
-		/// — scoped to a SINGLE set (2026-07-18 decision: removing a part's node in
-		/// the 3-column UI only clears the set you're currently looking at, other
-		/// sets' assignments for the same group number are untouched). Deliberately
-		/// never touches the global keymap bind. Returns true if anything changed.
+		/// Strips assignments, name and toggle for one (set, group) on this part only:
+		/// removing a part from the UI clears the set being looked at, never the other
+		/// sets, and never the global keymap bind.
 		/// </summary>
 		public bool RemoveGroupInSet(int set, int group)
 		{
@@ -582,13 +505,13 @@ namespace KRILL
 			SetNameIn(names, set, group, name);
 		}
 
-		/// <summary>Display name for exactly (set, group); null if none (no inheritance between sets since 2026-09-14).</summary>
+		/// <summary>Display name for exactly (set, group); null if none. No inheritance between sets.</summary>
 		public string GetName(int set, int group)
 		{
 			return GetNameIn(names, set, group);
 		}
 
-		/// <summary>Axis display name — same storage class and same per-set independence as group names, separate list (axes and groups are numbered independently).</summary>
+		/// <summary>Axis display name: same storage class as group names, own list, since axes and groups are numbered independently.</summary>
 		public string GetAxisName(int set, int axis)
 		{
 			return GetNameIn(axisNames, set, axis);
@@ -738,10 +661,8 @@ namespace KRILL
 			indicators.Add(new KrillGroupIndicator { set = set, group = group, type = type });
 		}
 
-		// ---- Extended axes (2026-09-07, notes/axes-design.md A1). Same shapes as
-		// the group helpers above: assignments per part, everything else by
-		// convention on the root part; per-set, no inheritance (names included
-		// since 2026-09-14).
+		// ---- Extended axes. Same shapes as the group helpers above: assignments per
+		// part, everything else on the root part; per set, with no inheritance.
 
 		public KrillAxisAssignment FindAxisAssignment(int set, int axis, KrillFieldRef fieldRef)
 		{
@@ -773,13 +694,13 @@ namespace KRILL
 			return a;
 		}
 
-		/// <summary>Removes assignment(s) matching these VALUES — by value, not reference, for the same symmetry-sibling reason as RemoveAssignmentMatching. Returns true if anything was removed.</summary>
+		/// <summary>Removes assignments by VALUE, not reference, for the same symmetry-sibling reason as RemoveAssignmentMatching.</summary>
 		public bool RemoveAxisAssignmentMatching(int set, int axis, KrillFieldRef fieldRef)
 		{
 			return axisAssignments.RemoveAll(a => a.set == set && a.axis == axis && a.fieldRef != null && a.fieldRef.SameField(fieldRef)) > 0;
 		}
 
-		/// <summary>Strips assignments/name/setting for one (set, axis) on THIS part only — single-set scope, same rule as RemoveGroupInSet; never touches the global axis keymap. Returns true if anything changed.</summary>
+		/// <summary>Strips assignments, name and setting for one (set, axis) on this part only, same single-set rule as RemoveGroupInSet.</summary>
 		public bool RemoveAxisInSet(int set, int axis)
 		{
 			int removed = axisAssignments.RemoveAll(a => a.set == set && a.axis == axis);
@@ -836,7 +757,7 @@ namespace KRILL
 			EnsureAxisSetting(set, axis).rest = Mathf.Clamp(rest, KrillAxes.RestMin, KrillAxes.RestMax);
 		}
 
-		/// <summary>Persisted level of a Fixed axis in -1..1; 0 if never set. Meaningless for Spring (see KrillAxisSetting).</summary>
+		/// <summary>Persisted level of a Fixed axis in -1..1; 0 if never set. Meaningless for Spring.</summary>
 		public float GetAxisValue(int set, int axis)
 		{
 			KrillAxisSetting s = FindAxisSetting(set, axis);

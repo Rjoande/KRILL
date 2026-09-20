@@ -6,21 +6,9 @@ using UnityEngine;
 namespace KRILL
 {
 	/// <summary>
-	/// The player's global AXIS keymap: extended axis number -> the physical
-	/// controller channel driving it (2026-09-08, notes/axes-design.md A3). Same
-	/// scoping as KrillKeymap — global, per-player, never per-craft: the craft
-	/// only says what the axis does, the keymap says which stick moves it.
-	///
-	/// Each entry IS a stock AxisBinding_Single (reused, not reimplemented —
-	/// decompiled 2026-09-07): it persists the device NAME plus the axis index
-	/// and resolves the volatile "joyN" number back at load time through
-	/// GameSettings.INPUT_DEVICES, so a bind survives Unity renumbering the
-	/// joysticks between sessions. KRILL creates its entries with deadzone 0,
-	/// sensitivity 1, scale 1 and no inversion (user decision: curves and dead
-	/// zones belong to the device/HID software, KRILL reads the raw channel);
-	/// the class's lock-mask and flight-mode switch handling come along for free.
-	/// Its own file under PluginData/ (same reasoning as keymap.cfg: ModuleManager
-	/// never scans that folder).
+	/// The player's global AXIS keymap: extended axis number -> the controller
+	/// channel driving it. Each entry is a stock AxisBinding_Single, stored by
+	/// device NAME and re-resolved at load time, with deadzone 0 and no curve.
 	/// </summary>
 	public static class KrillAxisKeymap
 	{
@@ -67,12 +55,9 @@ namespace KRILL
 		}
 
 		/// <summary>
-		/// Current value of the channel bound to `axis`, in -1..1, with KRILL's
-		/// GLOBAL dead zone (KrillParams.AxisDeadzone) applied — the driver's read
-		/// path (A4). False when the axis is unbound or its device isn't connected.
-		/// The binding's own deadzone field stays 0 on purpose: the dead zone is a
-		/// player setting applied here, never baked into the persisted bind, so a
-		/// change in the settings page reaches every axis without a recapture.
+		/// Current value of the channel bound to `axis` in -1..1, with the global dead
+		/// zone applied here rather than baked into the bind, so changing the setting
+		/// reaches every axis without a recapture. False when unbound or unplugged.
 		/// </summary>
 		public static bool TryRead(int axis, out float value)
 		{
@@ -86,7 +71,7 @@ namespace KRILL
 			return true;
 		}
 
-		/// <summary>Stock's own dead-zone shape (AxisBinding_Single.GetAxis, decompiled): zero inside ±dz, then rescaled so the remaining travel still spans the full -1..1.</summary>
+		/// <summary>Stock's own dead-zone shape: zero inside ±dz, then rescaled so the remaining travel still spans the full -1..1.</summary>
 		public static float ApplyDeadzone(float v, float dz)
 		{
 			if (dz <= 0f)
@@ -108,11 +93,7 @@ namespace KRILL
 			return b != null ? b.title : "-";
 		}
 
-		/// <summary>
-		/// A fresh KRILL-style binding for one physical channel — the same fields
-		/// stock's own settings screen fills in (decompiled SettingsInputBinding.
-		/// SetAxis), with KRILL's "raw channel" defaults on top.
-		/// </summary>
+		/// <summary>A fresh binding for one physical channel: the same fields stock's settings screen fills in, with KRILL's raw-channel defaults.</summary>
 		public static AxisBinding_Single Create(int deviceIdx, int axisIdx, string deviceName)
 		{
 			AxisBinding_Single b = new AxisBinding_Single
@@ -164,11 +145,9 @@ namespace KRILL
 				}
 				AxisBinding_Single b = new AxisBinding_Single();
 				b.Load(entry);
-				// Stock's Load rebuilds the title as name + "Axis " + idx (no space,
-				// not localized) when the device resolves, and "Not Found" when it
-				// doesn't — keep the latter as a visible diagnostic, restore ours
-				// for the former so the window shows the same text it showed at
-				// capture time.
+				// Stock's Load rebuilds the title unlocalized when the device resolves, and
+				// as "Not Found" when it doesn't — keep that one as a visible diagnostic
+				// and restore ours otherwise, so the window shows its capture-time text.
 				if (b.idTag != "None")
 				{
 					b.title = AxisTitle(b.name, b.axisIdx);
