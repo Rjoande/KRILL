@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.2
+
+### Fixed
+
+- **Conflict warnings no longer cry wolf over different modifiers**: two binds on the same key but with different modifiers (e.g. `RightControl+KeyPad1` and `LeftCommand+KeyPad1`) can never fire from each other's combination, and are no longer reported as a conflict. A bind is still flagged against one whose modifiers it contains (a bare key vs the same key with modifiers), and against any stock keybind on that key, which has no modifiers and fires regardless.
+
 ## v0.3.1
 
 ### Added

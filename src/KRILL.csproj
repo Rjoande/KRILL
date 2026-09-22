@@ -6,7 +6,7 @@
     <LangVersion>8.0</LangVersion>
     <AssemblyName>KRILL</AssemblyName>
     <RootNamespace>KRILL</RootNamespace>
-    <Version>0.3.1</Version>
+    <Version>0.3.2</Version>
     <DebugType>none</DebugType>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <!-- KSP install the reference assemblies come from. Defaults to the game

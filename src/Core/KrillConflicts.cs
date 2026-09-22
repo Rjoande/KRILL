@@ -6,7 +6,8 @@ namespace KRILL
 	/// <summary>
 	/// Non-blocking conflict advisory: like stock, KRILL warns and never blocks —
 	/// this only describes what else already uses a candidate's primary key or
-	/// channel. Two binds conflict when they share the PRIMARY key, modifiers aside.
+	/// channel. Two KRILL binds conflict per KrillBind.ConflictsWith; a stock
+	/// KeyBinding has no modifiers, so it conflicts with every bind on its key.
 	/// </summary>
 	public static class KrillConflicts
 	{
@@ -29,7 +30,7 @@ namespace KRILL
 				{
 					continue;
 				}
-				if (candidate.SharesPrimaryWith(kv.Value))
+				if (candidate.ConflictsWith(kv.Value))
 				{
 					hits.Add("KRILL group " + kv.Key + " (" + kv.Value.Describe() + ")");
 				}
@@ -41,7 +42,7 @@ namespace KRILL
 				{
 					continue;
 				}
-				if (candidate.SharesPrimaryWith(kv.Value))
+				if (candidate.ConflictsWith(kv.Value))
 				{
 					hits.Add("KRILL set-jump " + kv.Key + " (" + kv.Value.Describe() + ")");
 				}
@@ -83,7 +84,7 @@ namespace KRILL
 			{
 				return;
 			}
-			if (candidate.SharesPrimaryWith(slot))
+			if (candidate.ConflictsWith(slot))
 			{
 				hits.Add("KRILL axis " + axis + (plus ? " + key (" : " - key (") + slot.Describe() + ")");
 			}

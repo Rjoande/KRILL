@@ -59,10 +59,31 @@ namespace KRILL
 			return true;
 		}
 
-		/// <summary>True if this and other share the same primary key — the test that matters, see Matches.</summary>
-		public bool SharesPrimaryWith(KrillBind other)
+		/// <summary>
+		/// True if a single press can fire both binds: same primary, and one modifier
+		/// set contained in the other. Matches() does not check that nothing else is
+		/// down, so Ctrl+J also fires a bare J — but Ctrl+J and Alt+J never fire from
+		/// each other's combination, and are not a conflict.
+		/// </summary>
+		public bool ConflictsWith(KrillBind other)
 		{
-			return other != null && !IsNone && primary == other.primary;
+			if (other == null || IsNone || primary != other.primary)
+			{
+				return false;
+			}
+			return Covers(modifiers, other.modifiers) || Covers(other.modifiers, modifiers);
+		}
+
+		private static bool Covers(List<KeyCode> set, List<KeyCode> subset)
+		{
+			for (int i = 0; i < subset.Count; i++)
+			{
+				if (!set.Contains(subset[i]))
+				{
+					return false;
+				}
+			}
+			return true;
 		}
 
 		/// <summary>Human-readable form for logs and the UI, e.g. "LeftShift+J".</summary>
