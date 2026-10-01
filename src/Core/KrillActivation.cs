@@ -121,6 +121,7 @@ namespace KRILL
 				}
 			}
 			KrillSignal.ClearPulses();
+			lockedLogged = false;
 		}
 
 		private static ModuleKrill RootModule(Vessel v)
@@ -128,13 +129,18 @@ namespace KRILL
 			return v?.rootPart?.FindModuleImplementing<ModuleKrill>();
 		}
 
+		/// <summary>Silent, like a KRILL that isn't there yet (the keymap is global, so binds from another save exist): one log line per scene, reset by ReleaseAllHolds.</summary>
 		private static KrillActivationResult Locked(int group)
 		{
-			Debug.LogFormat("[KRILL] group {0} triggered but extended groups are locked (career facility tier)", group);
-			ScreenMessages.PostScreenMessage(
-				"KRILL group " + group + " locked (upgrade VAB/SPH)", 3f, ScreenMessageStyle.UPPER_CENTER);
+			if (!lockedLogged)
+			{
+				lockedLogged = true;
+				Debug.LogFormat("[KRILL] group {0} triggered but extended groups are locked (career facility tier); further presses ignored silently", group);
+			}
 			return KrillActivationResult.Locked;
 		}
+
+		private static bool lockedLogged;
 
 		/// <summary>
 		/// The one place that calls BaseAction.Invoke and raises GroupActivated. Keeps

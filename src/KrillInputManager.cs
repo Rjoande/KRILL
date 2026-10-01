@@ -66,8 +66,8 @@ namespace KRILL
 			}
 			ModuleKrill root = v.rootPart.FindModuleImplementing<ModuleKrill>();
 			int set = KrillActivation.ActiveSet(v);
-			// Checked once per frame rather than per press: a held key on a locked save
-			// would otherwise re-post the locked message every single frame.
+			// Gates Hold presses, which would otherwise hit the locked path every frame
+			// the key stays down; Fire gates itself on the key-down edge.
 			bool unlocked = KrillQuery.ExtendedGroupsUnlockedAnywhere();
 			// Key polling stops while a KRILL text field has focus or anything outside
 			// KRILL locks the keyboard. Releases below stay unconditional: a hold that

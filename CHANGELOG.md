@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.3.3
+
+### Changed
+
+- **Career: no KRILL button until custom action groups are unlocked**, like the stock action-group editor. In the VAB or SPH it follows that building's tier; in flight either building is enough. Keys pressed before then do nothing, without an on-screen message.
+
+### Fixed
+
+- **Joystick buttons are captured once**, as the button of that joystick (e.g. `Joystick2Button10`, no longer `Joystick2Button10+Joystick1Button10`). Old binds keep working.
+- **Command/Apple keys (or LWin / RWin) are no longer recorded twice** as modifiers.
+
 ## v0.3.2
 
 ### Fixed

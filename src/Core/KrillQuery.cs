@@ -344,6 +344,16 @@ namespace KRILL
 			return ExtendedGroupsUnlocked(true) || ExtendedGroupsUnlocked(false);
 		}
 
+		/// <summary>Gate for the current scene: in the editor the facility being used, like stock's own action-group editor; elsewhere either facility.</summary>
+		public static bool ExtendedGroupsUnlockedHere()
+		{
+			if (HighLogic.LoadedSceneIsEditor)
+			{
+				return ExtendedGroupsUnlocked(EditorDriver.editorFacility != EditorFacility.SPH);
+			}
+			return ExtendedGroupsUnlockedAnywhere();
+		}
+
 		/// <summary>
 		/// Everything known about one (set, group), read the same way by the window and
 		/// by other mods. Read `signal`, the plain 0/1 level; `active` is the private

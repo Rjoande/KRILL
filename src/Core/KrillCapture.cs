@@ -104,6 +104,53 @@ namespace KRILL
 			}
 		}
 
+		// Unity reports every joystick button twice: JoystickButtonN (any joystick)
+		// and JoystickKButtonN (that one), laid out as JoystickButton0..19 followed
+		// by Joystick1Button0..19 .. Joystick8Button19.
+		private const int ButtonsPerJoystick = 20;
+
+		private static bool IsGenericJoystickButton(KeyCode code)
+		{
+			return code >= KeyCode.JoystickButton0 && code <= KeyCode.JoystickButton19;
+		}
+
+		private static int ButtonIndex(KeyCode code)
+		{
+			if (IsGenericJoystickButton(code))
+			{
+				return code - KeyCode.JoystickButton0;
+			}
+			return (code - KeyCode.Joystick1Button0) % ButtonsPerJoystick;
+		}
+
+		/// <summary>The JoystickKButtonN held for button index `index`, or None.</summary>
+		private static KeyCode SpecificJoystickButtonHeld(int index)
+		{
+			for (int code = (int)KeyCode.Joystick1Button0 + index; code <= (int)KeyCode.Joystick8Button19; code += ButtonsPerJoystick)
+			{
+				if (Input.GetKey((KeyCode)code))
+				{
+					return (KeyCode)code;
+				}
+			}
+			return KeyCode.None;
+		}
+
+		/// <summary>
+		/// The generic JoystickButtonN sorts first in the enum, so it would win the
+		/// primary and push the real JoystickKButtonN into the modifiers; the bind
+		/// names the specific joystick instead. Old binds in that form still match.
+		/// </summary>
+		private static KeyCode PreferSpecificJoystick(KeyCode primary)
+		{
+			if (!IsGenericJoystickButton(primary))
+			{
+				return primary;
+			}
+			KeyCode specific = SpecificJoystickButtonHeld(ButtonIndex(primary));
+			return specific == KeyCode.None ? primary : specific;
+		}
+
 		public static void Tick()
 		{
 			if (Time.frameCount == lastTickFrame)
@@ -156,19 +203,30 @@ namespace KRILL
 					continue;
 				}
 
-				KrillBind bind = new KrillBind { primary = candidate };
+				KrillBind bind = new KrillBind { primary = PreferSpecificJoystick(candidate) };
+				// A set, because Enum.GetValues lists alias values twice (LeftApple and
+				// LeftCommand share one value): a held alias would be recorded twice.
+				HashSet<KeyCode> mods = new HashSet<KeyCode>();
 				for (int j = 0; j < AllKeyCodes.Length; j++)
 				{
 					KeyCode modCandidate = AllKeyCodes[j];
-					if (modCandidate == candidate || modCandidate == KeyCode.None || ExcludedKeys.Contains(modCandidate))
+					if (modCandidate == bind.primary || modCandidate == KeyCode.None || ExcludedKeys.Contains(modCandidate))
 					{
 						continue;
 					}
-					if (Input.GetKey(modCandidate))
+					if (!Input.GetKey(modCandidate))
 					{
-						bind.modifiers.Add(modCandidate);
+						continue;
 					}
+					// The generic twin of a held JoystickKButtonN is the same physical
+					// button, not a modifier.
+					if (IsGenericJoystickButton(modCandidate) && SpecificJoystickButtonHeld(ButtonIndex(modCandidate)) != KeyCode.None)
+					{
+						continue;
+					}
+					mods.Add(modCandidate);
 				}
+				bind.modifiers.AddRange(mods);
 
 				IsCapturing = false;
 				InputLockManager.RemoveControlLock(LockId);
