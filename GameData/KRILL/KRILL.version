@@ -1,0 +1,30 @@
+{
+    "NAME": "KRILL",
+    "URL": "https://raw.githubusercontent.com/Rjoande/KRILL/main/GameData/KRILL/KRILL.version",
+    "DOWNLOAD": "https://github.com/Rjoande/KRILL/releases/latest",
+    "GITHUB": {
+        "USERNAME": "Rjoande",
+        "REPOSITORY": "KRILL",
+        "ALLOW_PRE_RELEASE": false
+    },
+    "VERSION": {
+        "MAJOR": 0,
+        "MINOR": 3,
+        "PATCH": 2
+    },
+    "KSP_VERSION": {
+        "MAJOR": 1,
+        "MINOR": 12,
+        "PATCH": 5
+    },
+    "KSP_VERSION_MIN": {
+        "MAJOR": 1,
+        "MINOR": 12,
+        "PATCH": 0
+    },
+    "KSP_VERSION_MAX": {
+        "MAJOR": 1,
+        "MINOR": 12,
+        "PATCH": 99
+    }
+}

@@ -25,6 +25,15 @@ What it does
   key or joystick button you want, done. Works with keyboard keys and joystick
   buttons interchangeably, including layered modifier combinations for
   extended groups.
+- Joystick buttons follow the device, not its number: Windows hands out
+  joystick numbers in a different order from one launch to the next, so a
+  plain Joystick2Button5 would land on whichever stick is number 2 today. A
+  captured button is tied to the device's name instead, resolved every time it
+  is polled, and shown as VKBsim.B5. The devices and their short labels live
+  in PluginData/devices.cfg; an optional block at the bottom of the window
+  (difficulty settings page) lets you rename a label, see where each device
+  sits right now, or forget one. An unplugged device's binds simply do nothing
+  until it is back. Groups 1-10 keep stock's own number-based key.
 - Non-blocking conflict warnings: if a key is already in use by another KRILL
   bind or by a stock keybind, you're told exactly what — nothing is ever
   silently overwritten or blocked.
@@ -145,6 +154,8 @@ Known limitations & Future Plans
 
 - English and Italian only. Contributions are welcome (I personally accept
   AI-assisted translation, as long as they are human-reviewed before issuing).
+- Two identical joysticks (same device name) can't be told apart by name: the
+  lowest-numbered one wins, exactly as stock does for its axes.
 - Override sets (1-4) are renamed from stock's own UI, not from KRILL: the
   KRILL window shows the set names on its tabs but has no rename field of its
   own (stock has nowhere to store those names before a vessel exists anyway).
