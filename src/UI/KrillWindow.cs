@@ -525,6 +525,10 @@ namespace KRILL.UI
 			{
 				BuildFooter(parts, gIdx >= 0 ? (GroupEntry?)groups[gIdx] : null);
 			}
+			if (KrillParams.ShowJoystickDevices)
+			{
+				BuildDevicesBlock();
+			}
 
 			// The layout has not measured the new content on this frame yet: setting the
 			// scroll position before a forced pass would be measured against a stale
@@ -1232,6 +1236,12 @@ namespace KRILL.UI
 			}
 		}
 
+		/// <summary>A stock key as the window shows it: the physical code the KeyBinding holds, in "label.Bn" form when a joystick known by name sits there right now.</summary>
+		private static string StockCodeDescribe(KeyCode physical)
+		{
+			return KrillJoysticks.Describe(KrillJoysticks.LogicalIfKnown(physical));
+		}
+
 		private static string StockBindDescribe(int group)
 		{
 			KeyBinding kb = StockKeyBinding(group);
@@ -1239,7 +1249,7 @@ namespace KRILL.UI
 			{
 				return "-";
 			}
-			return kb.primary.code.ToString();
+			return StockCodeDescribe(kb.primary.code);
 		}
 
 		// ------------------------------------------------------ stock custom axes
@@ -1302,7 +1312,7 @@ namespace KRILL.UI
 			{
 				return null;
 			}
-			return kb.primary.code.ToString();
+			return StockCodeDescribe(kb.primary.code);
 		}
 
 		/// <summary>
@@ -1336,7 +1346,7 @@ namespace KRILL.UI
 			GameSettings.SaveSettings();
 		}
 
-		/// <summary>The group's current bind as a KrillBind, for the footer's conflict check. Always primary-only for stock groups, which have no modifiers.</summary>
+		/// <summary>The group's current bind as a KrillBind, for the footer's conflict check. Always primary-only for stock groups, which have no modifiers; their physical code is read back as KRILL's logical one so it compares with KRILL binds like for like.</summary>
 		private static KrillBind CurrentBind(GroupEntry g)
 		{
 			if (g.isStock)
@@ -1346,7 +1356,7 @@ namespace KRILL.UI
 				{
 					return null;
 				}
-				return new KrillBind { primary = kb.primary.code };
+				return new KrillBind { primary = KrillJoysticks.LogicalIfKnown(kb.primary.code) };
 			}
 			return KrillKeymap.GetBind(g.number);
 		}
@@ -1920,10 +1930,12 @@ namespace KRILL.UI
 				KeyBinding kb = StockKeyBinding(group);
 				if (kb != null)
 				{
-					kb.primary = new KeyCodeExtended(bind.primary);
+					// Stock holds physical codes: a joystick button goes in as the button of
+					// wherever that device is right now, which is where it was just pressed.
+					kb.primary = new KeyCodeExtended(KrillJoysticks.Physical(bind.primary));
 					GameSettings.SaveSettings();
 				}
-				string msgStock = Localizer.Format("#LOC_KRILL_ui_captureDoneStock", group.ToString(), bind.primary.ToString())
+				string msgStock = Localizer.Format("#LOC_KRILL_ui_captureDoneStock", group.ToString(), KrillJoysticks.Describe(bind.primary))
 					+ (bind.modifiers.Count > 0 ? " " + Loc("#LOC_KRILL_ui_modifiersIgnored") : "") + conflictSuffix;
 				ScreenMessages.PostScreenMessage(msgStock, 5f, ScreenMessageStyle.UPPER_CENTER);
 			}
@@ -1934,6 +1946,62 @@ namespace KRILL.UI
 				ScreenMessages.PostScreenMessage(msg, 5f, ScreenMessageStyle.UPPER_CENTER);
 			}
 			RebuildContent();
+		}
+
+		// ------------------------------------------------------------------ devices
+
+		/// <summary>
+		/// Bottom block, shown only with the Difficulty setting on: one row per joystick
+		/// known by name (KrillJoysticks), with its editable label, its full name,
+		/// where it sits right now and a Forget button.
+		/// </summary>
+		private void BuildDevicesBlock()
+		{
+			GameObject block = KrillUi.Go("Devices", contentHost);
+			KrillUi.Vertical(block, 0, 2f);
+			Text head = KrillUi.Label(block.transform, Loc("#LOC_KRILL_ui_devicesHeader"), 10, KrillUi.Faint,
+				TextAnchor.MiddleLeft, FontStyle.Bold);
+			KrillUi.Size(head.gameObject, -1f, 16f);
+
+			IReadOnlyList<KrillJoysticks.Device> devices = KrillJoysticks.Devices;
+			if (devices.Count == 0)
+			{
+				Text none = KrillUi.Label(block.transform, Loc("#LOC_KRILL_ui_devicesNone"), 11, KrillUi.Muted);
+				KrillUi.Size(none.gameObject, -1f, 20f);
+				return;
+			}
+			foreach (KrillJoysticks.Device d in devices)
+			{
+				int index = d.index;
+				GameObject row = KrillUi.Go("Device", block.transform);
+				KrillUi.Horizontal(row, 0, 8f);
+				KrillUi.Size(row, -1f, 22f);
+
+				// Committed on end-edit when valid and free; the rebuild shows what was kept.
+				InputField labelField = KrillUi.Field(row.transform, d.label, 80f, text =>
+				{
+					KrillJoysticks.SetLabel(index, text.Trim());
+					RebuildContent();
+				});
+				KrillUi.Size(labelField.gameObject, 80f, 20f);
+
+				Text name = KrillUi.Label(row.transform, "Joystick" + d.index + " = " + d.name, 11, KrillUi.Text);
+				KrillUi.Size(name.gameObject, 0f, 20f, 1f);
+				KrillUi.ClipText(name);
+
+				int now = KrillJoysticks.CurrentIndexOf(d.name);
+				string statusText = now == 0
+					? Loc("#LOC_KRILL_ui_deviceAbsent")
+					: Localizer.Format("#LOC_KRILL_ui_deviceNow", now.ToString());
+				Text status = KrillUi.Label(row.transform, statusText, 11, now == 0 ? KrillUi.Warn : KrillUi.Muted, TextAnchor.MiddleRight);
+				KrillUi.Size(status.gameObject, 110f, 20f);
+
+				KrillUi.TextButton(row.transform, Loc("#LOC_KRILL_ui_deviceForget"), () =>
+				{
+					KrillJoysticks.Forget(index);
+					RebuildContent();
+				}, KrillUi.Panel2, KrillUi.TanDim, 11, 60f, 22f);
+			}
 		}
 
 		// --------------------------------------------------------------- LateUpdate

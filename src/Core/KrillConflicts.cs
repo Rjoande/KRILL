@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Reflection;
+using UnityEngine;
 
 namespace KRILL
 {
@@ -8,6 +9,8 @@ namespace KRILL
 	/// this only describes what else already uses a candidate's primary key or
 	/// channel. Two KRILL binds conflict per KrillBind.ConflictsWith; a stock
 	/// KeyBinding has no modifiers, so it conflicts with every bind on its key.
+	/// KRILL binds compare on their logical joystick codes, stock ones on the
+	/// physical code the device has right now (see KrillJoysticks).
 	/// </summary>
 	public static class KrillConflicts
 	{
@@ -54,6 +57,12 @@ namespace KRILL
 				AddAxisKeyHit(hits, candidate, kv.Key, false, kv.Value.minus, excludeAxis, excludeAxisPlus);
 			}
 
+			// None while the candidate's joystick is not connected: nothing can clash.
+			KeyCode physical = KrillJoysticks.Physical(candidate.primary);
+			if (physical == KeyCode.None)
+			{
+				return hits;
+			}
 			foreach (FieldInfo field in typeof(GameSettings).GetFields(BindingFlags.Public | BindingFlags.Static))
 			{
 				if (field.FieldType != typeof(KeyBinding))
@@ -65,11 +74,11 @@ namespace KRILL
 				{
 					continue;
 				}
-				if (kb.primary != null && !kb.primary.isNone && kb.primary.code == candidate.primary)
+				if (kb.primary != null && !kb.primary.isNone && kb.primary.code == physical)
 				{
 					hits.Add("stock '" + field.Name + "'");
 				}
-				else if (kb.secondary != null && !kb.secondary.isNone && kb.secondary.code == candidate.primary)
+				else if (kb.secondary != null && !kb.secondary.isNone && kb.secondary.code == physical)
 				{
 					hits.Add("stock '" + field.Name + "' (secondary)");
 				}

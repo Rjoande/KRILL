@@ -8,7 +8,9 @@ namespace KRILL
 	/// <summary>
 	/// One player keybind: a primary KeyCode plus zero or more modifiers that must
 	/// be held with it. Keyboard keys and joystick buttons are the same thing here
-	/// (Unity KeyCode covers both), and capture never distinguishes them.
+	/// (Unity KeyCode covers both), and capture never distinguishes them. A
+	/// JoystickKButtonN is stored with K as a LOGICAL index (see KrillJoysticks):
+	/// polled where that device is right now, shown as "label.Bn".
 	/// </summary>
 	public class KrillBind
 	{
@@ -24,18 +26,12 @@ namespace KRILL
 		/// </summary>
 		public bool Matches()
 		{
-			if (IsNone || !Input.GetKeyDown(primary))
+			if (IsNone)
 			{
 				return false;
 			}
-			for (int i = 0; i < modifiers.Count; i++)
-			{
-				if (!Input.GetKey(modifiers[i]))
-				{
-					return false;
-				}
-			}
-			return true;
+			KeyCode key = KrillJoysticks.Physical(primary);
+			return key != KeyCode.None && Input.GetKeyDown(key) && ModifiersHeld();
 		}
 
 		/// <summary>
@@ -45,13 +41,21 @@ namespace KRILL
 		/// </summary>
 		public bool IsHeldWithModifiers()
 		{
-			if (IsNone || !Input.GetKey(primary))
+			if (IsNone)
 			{
 				return false;
 			}
+			KeyCode key = KrillJoysticks.Physical(primary);
+			return key != KeyCode.None && Input.GetKey(key) && ModifiersHeld();
+		}
+
+		/// <summary>Every modifier held, each polled on its current physical code; a modifier on a disconnected joystick is never held.</summary>
+		private bool ModifiersHeld()
+		{
 			for (int i = 0; i < modifiers.Count; i++)
 			{
-				if (!Input.GetKey(modifiers[i]))
+				KeyCode mod = KrillJoysticks.Physical(modifiers[i]);
+				if (mod == KeyCode.None || !Input.GetKey(mod))
 				{
 					return false;
 				}
@@ -86,23 +90,19 @@ namespace KRILL
 			return true;
 		}
 
-		/// <summary>Human-readable form for logs and the UI, e.g. "LeftShift+J".</summary>
+		/// <summary>Human-readable form for logs and the UI, e.g. "LeftShift+J" or "VKBsim.B10" for a joystick known by name.</summary>
 		public string Describe()
 		{
 			if (IsNone)
 			{
 				return "-";
 			}
-			if (modifiers.Count == 0)
-			{
-				return primary.ToString();
-			}
 			StringBuilder sb = new StringBuilder();
 			for (int i = 0; i < modifiers.Count; i++)
 			{
-				sb.Append(modifiers[i]).Append('+');
+				sb.Append(KrillJoysticks.Describe(modifiers[i])).Append('+');
 			}
-			sb.Append(primary);
+			sb.Append(KrillJoysticks.Describe(primary));
 			return sb.ToString();
 		}
 
@@ -120,19 +120,25 @@ namespace KRILL
 		{
 			KrillBind b = new KrillBind();
 			string p = node.GetValue("primary");
-			if (string.IsNullOrEmpty(p) || !Enum.TryParse(p, out b.primary) || b.primary == KeyCode.None)
+			if (string.IsNullOrEmpty(p) || !TryParseKey(p, out b.primary) || b.primary == KeyCode.None)
 			{
 				Debug.LogWarning("[KRILL] dropping bind node with unparsable primary key: " + node);
 				return null;
 			}
 			foreach (string m in node.GetValues("modifier"))
 			{
-				if (Enum.TryParse(m, out KeyCode kc) && kc != KeyCode.None)
+				if (TryParseKey(m, out KeyCode kc) && kc != KeyCode.None)
 				{
 					b.modifiers.Add(kc);
 				}
 			}
 			return b;
+		}
+
+		/// <summary>A KeyCode name, or the "label.Bn" form of a joystick known by name (accepted for hand edits; Save always writes the KeyCode name).</summary>
+		private static bool TryParseKey(string text, out KeyCode code)
+		{
+			return Enum.TryParse(text, out code) || KrillJoysticks.TryParse(text, out code);
 		}
 	}
 }

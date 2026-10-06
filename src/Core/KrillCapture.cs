@@ -105,10 +105,7 @@ namespace KRILL
 		}
 
 		// Unity reports every joystick button twice: JoystickButtonN (any joystick)
-		// and JoystickKButtonN (that one), laid out as JoystickButton0..19 followed
-		// by Joystick1Button0..19 .. Joystick8Button19.
-		private const int ButtonsPerJoystick = 20;
-
+		// and JoystickKButtonN (that one).
 		private static bool IsGenericJoystickButton(KeyCode code)
 		{
 			return code >= KeyCode.JoystickButton0 && code <= KeyCode.JoystickButton19;
@@ -120,13 +117,13 @@ namespace KRILL
 			{
 				return code - KeyCode.JoystickButton0;
 			}
-			return (code - KeyCode.Joystick1Button0) % ButtonsPerJoystick;
+			return KrillJoysticks.ButtonOf(code);
 		}
 
 		/// <summary>The JoystickKButtonN held for button index `index`, or None.</summary>
 		private static KeyCode SpecificJoystickButtonHeld(int index)
 		{
-			for (int code = (int)KeyCode.Joystick1Button0 + index; code <= (int)KeyCode.Joystick8Button19; code += ButtonsPerJoystick)
+			for (int code = (int)KeyCode.Joystick1Button0 + index; code <= (int)KeyCode.Joystick8Button19; code += KrillJoysticks.ButtonsPerJoystick)
 			{
 				if (Input.GetKey((KeyCode)code))
 				{
@@ -203,14 +200,18 @@ namespace KRILL
 					continue;
 				}
 
-				KrillBind bind = new KrillBind { primary = PreferSpecificJoystick(candidate) };
+				// The stored code carries the LOGICAL joystick index (device known by
+				// name, see KrillJoysticks); the physical one is what the held keys
+				// below must be compared against.
+				KeyCode physicalPrimary = PreferSpecificJoystick(candidate);
+				KrillBind bind = new KrillBind { primary = KrillJoysticks.Logical(physicalPrimary) };
 				// A set, because Enum.GetValues lists alias values twice (LeftApple and
 				// LeftCommand share one value): a held alias would be recorded twice.
 				HashSet<KeyCode> mods = new HashSet<KeyCode>();
 				for (int j = 0; j < AllKeyCodes.Length; j++)
 				{
 					KeyCode modCandidate = AllKeyCodes[j];
-					if (modCandidate == bind.primary || modCandidate == KeyCode.None || ExcludedKeys.Contains(modCandidate))
+					if (modCandidate == physicalPrimary || modCandidate == KeyCode.None || ExcludedKeys.Contains(modCandidate))
 					{
 						continue;
 					}
@@ -224,7 +225,7 @@ namespace KRILL
 					{
 						continue;
 					}
-					mods.Add(modCandidate);
+					mods.Add(KrillJoysticks.Logical(modCandidate));
 				}
 				bind.modifiers.AddRange(mods);
 

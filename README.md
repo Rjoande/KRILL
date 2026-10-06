@@ -11,6 +11,7 @@ groups 1-10 always have: same 5 override sets, same activation semantics, same c
 - **Full symmetry with the 5 stock override sets** (Default + 4): every extended group can be assigned differently per set, exactly like stock groups 1-10 already are.
 - **A single 3-column window** (Action Groups | Parts | Actions), usable in the VAB/SPH and in flight: pick a group, pick a part, pick an action. No scrolling through six different screens.
 - **A global player keymap with "press it now" capture**: click Capture, press the key or joystick button you want, done. Works with keyboard keys and joystick buttons interchangeably, including layered modifier combinations for extended groups.
+- **Joystick buttons follow the device, not its number**: Windows hands out joystick numbers in a different order from one launch to the next, so a plain `Joystick2Button5` would land on whichever stick is number 2 today. A captured button is tied to the device's name instead, resolved every time it is polled, and shown as `VKBsim.B5`. The devices and their short labels live in `PluginData/devices.cfg`; an optional block at the bottom of the window (difficulty settings page) lets you rename a label, see where each device sits right now, or forget one. An unplugged device's binds simply do nothing until it is back. Groups 1-10 keep stock's own number-based key.
 - **Non-blocking conflict warnings**: if a key is already in use by another KRILL bind or by a stock keybind, you're told exactly what — nothing is ever silently overwritten or blocked.
 - **Jump directly to any set** with its own dedicated key, independent of whichever set happens to be active right now (stock's F6/F7 only step through sets one at a time).
 - **A manual Trigger button**, to fire a group instantly in flight without touching its key at all (useful for testing a setup before binding it).
@@ -51,6 +52,7 @@ A few tested ways around it, using your device's own mapping software:
 ## Known limitations & Future Plans
 
 - English and Italian only. Contributions are welcome (I personally accept AI-assisted translation, as long as they are human-reviewed before issuing).
+- Two identical joysticks (same device name) can't be told apart by name: the lowest-numbered one wins, exactly as stock does for its axes.
 - Override sets (1-4) are renamed from stock's own UI, not from KRILL: the KRILL window shows the set names on its tabs but has no rename field of its own (stock has nowhere to store those names before a vessel exists anyway).
 - No in-flight console (button grid) *yet*: activation is by keybind or from the KRILL window's own Trigger button.
 - A Hold-kind group interrupted by a save (quicksave, or leaving to the Space Center while still pressing) reads as off after loading, but the part itself keeps whatever state the save captured (the same thing happens with stock's Brakes held through a quicksave). The next press resyncs it.

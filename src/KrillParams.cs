@@ -51,6 +51,13 @@ namespace KRILL
 			minValue = 10, maxValue = 300, stepSize = 10)]
 		public int axisKeyRate = 50;
 
+		// Diagnostic block at the bottom of the window: the joysticks KRILL knows by
+		// name, with their label field and where each one sits right now. Off by
+		// default, it only matters to a player with more than one stick.
+		[GameParameters.CustomParameterUI("#LOC_KRILL_settings_showDevices",
+			toolTip = "#LOC_KRILL_settings_showDevices_tip")]
+		public bool showJoystickDevices = false;
+
 		public override void SetDifficultyPreset(GameParameters.Preset preset)
 		{
 		}
@@ -91,6 +98,18 @@ namespace KRILL
 					return 12;
 				}
 				return HighLogic.CurrentGame.Parameters.CustomParams<KrillParams>().maxVisibleAxis;
+			}
+		}
+
+		public static bool ShowJoystickDevices
+		{
+			get
+			{
+				if (HighLogic.CurrentGame == null)
+				{
+					return false;
+				}
+				return HighLogic.CurrentGame.Parameters.CustomParams<KrillParams>().showJoystickDevices;
 			}
 		}
 
