@@ -2,18 +2,14 @@
 
 ## v0.3.2
 
-### Added
-
-- **Joystick buttons follow the device, not its number.** Windows renumbers joysticks between launches, so a bind stored as `Joystick2Button5` used to fire from whichever stick was number 2 that day. A captured button is now tied to the device's name and resolved every time it is polled. The devices and their short labels live in `PluginData/devices.cfg`. A new difficulty setting, **Show joysticks known by name** (off by default), adds a block at the bottom of the window to rename a label, see which number each device has right now and forget one. An unplugged device's binds do nothing until it is back (one warning in the log). Binds captured before this version keep working by number until recaptured.
-
 ### Changed
 
 - **Career: no KRILL button until custom action groups are unlocked**, like the stock action-group editor. In the VAB or SPH it follows that building's tier; in flight either building is enough. Keys pressed before then do nothing, without an on-screen message.
 
 ### Fixed
 
-- **Conflict warnings no longer cry wolf over different modifiers**: two binds on the same key but with different modifiers (e.g. `RightControl+KeyPad1` and `LeftCommand+KeyPad1`) can never fire from each other's combination, and are no longer reported as a conflict. A bind is still flagged against one whose modifiers it contains (a bare key vs the same key with modifiers), and against any stock keybind on that key, which has no modifiers and fires regardless.
-- **Joystick buttons are captured once**, as the button of that joystick (e.g. `Joystick2Button10`, no longer `Joystick2Button10+Joystick1Button10`). Old binds keep working.
+- Two binds on the same key but with different modifiers are no longer reported as a conflict.
+- **Joystick buttons follow the device**: Windows hands out joystick numbers in a different order from one launch to the next. Now a captured button is tied to the device's name (editable). Old bindings keep working by number until recaptured.
 - **Command/Apple keys (or LWin / RWin) are no longer recorded twice** as modifiers.
 
 ## v0.3.1
