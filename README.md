@@ -36,6 +36,8 @@ groups 1-10 always have: same 5 override sets, same activation semantics, same c
 
 ## Installation
 
+KRILL is available through [CKAN](https://github.com/KSP-CKAN/CKAN), which also installs ModuleManager and ToolbarControl for you. To install by hand instead:
+
 Copy the contents of this repository into your `GameData` folder, so you end up with `GameData/KRILL/...`. Make sure ModuleManager and ToolbarControl are installed alongside it.
 
 ## Configuring a HOTAS with a lot of buttons
