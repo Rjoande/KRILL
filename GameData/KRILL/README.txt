@@ -108,6 +108,9 @@ Requirements
 Installation
 ------------
 
+KRILL is available through CKAN (https://github.com/KSP-CKAN/CKAN), which also
+installs ModuleManager and ToolbarControl for you. To install by hand instead:
+
 Extract this archive's contents into your GameData folder, so you end up with
 GameData/KRILL/.... Make sure ModuleManager and ToolbarControl are installed
 alongside it.
