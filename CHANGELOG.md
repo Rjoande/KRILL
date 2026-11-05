@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- Localizations: added missing line breaks in the tooltip of "Show joysticks known by name" setting.
+
 ## v0.3.2
 
 ### Changed
